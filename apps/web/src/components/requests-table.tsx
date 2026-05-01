@@ -10,6 +10,12 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function formatScaleDate(value: string) {
+  const [year, month, day] = value.split("-");
+  if (!year || !month || !day) return value;
+  return `${day}/${month}/${year}`;
+}
+
 function maskCpf(cpf: string) {
   const clean = cpf.replace(/\D/g, "");
   if (clean.length !== 11) return cpf;
@@ -49,6 +55,7 @@ export function RequestsTable({ requests }: { requests: WaitlistRequest[] }) {
             <th>Praça</th>
             <th>Horário</th>
             <th>Dia</th>
+            <th>Data escala</th>
             <th>Status</th>
             <th>Origem</th>
             <th>Ação</th>
@@ -69,6 +76,7 @@ export function RequestsTable({ requests }: { requests: WaitlistRequest[] }) {
               <td>{request.praca}</td>
               <td>{request.horario_label}</td>
               <td>{request.escala_dia_label}</td>
+              <td>{formatScaleDate(request.escala_data)}</td>
               <td>
                 <StatusBadge status={request.status} />
                 <div className="muted">{request.is_used ? "Usado" : "Disponível"}</div>

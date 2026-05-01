@@ -12,6 +12,7 @@ export type WaitlistRequest = {
   horario_inicio: string;
   horario_fim: string;
   escala_dia_label: string;
+  escala_data: string;
   status: WaitlistStatus;
   observacao: string | null;
   origem: string;
