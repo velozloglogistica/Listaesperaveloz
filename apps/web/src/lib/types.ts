@@ -26,8 +26,6 @@ export type PageFilters = {
   search?: string;
   praca?: string;
   horario?: string;
-  day?: string;
   status?: string;
   date?: string;
-  usage?: string;
 };

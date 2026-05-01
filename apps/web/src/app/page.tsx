@@ -8,37 +8,70 @@ export const dynamic = "force-dynamic";
 
 const pracas = ["Chapada", "Ponta Negra", "Santa Etelvina", "Tancredo Neves"];
 const horarios = ["Almoço", "Merenda", "Jantar"];
-const dias = ["Hoje", "Sexta", "Sábado", "Domingo"];
 const statuses = ["pendente", "agendado", "recusado", "cancelado"];
-const usages = [
-  { value: "", label: "Todos" },
-  { value: "available", label: "Disponíveis" },
-  { value: "used", label: "Usados" },
-];
 
 function firstParam(value?: string | string[]) {
   if (Array.isArray(value)) return value[0] ?? "";
   return value ?? "";
 }
 
-function currentOperationalDayLabel() {
-  const weekday = new Intl.DateTimeFormat("en-US", {
+function getManausDateParts(dateInput: string | Date) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
     weekday: "short",
     timeZone: "America/Manaus",
-  }).format(new Date());
+  }).formatToParts(new Date(dateInput));
 
-  if (weekday === "Fri") return "Sexta";
-  if (weekday === "Sat") return "Sábado";
-  if (weekday === "Sun") return "Domingo";
-  return "Hoje";
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+
+  return {
+    year: Number(get("year")),
+    month: Number(get("month")),
+    day: Number(get("day")),
+    weekday: get("weekday"),
+  };
 }
 
-function startOfDayIso(dateString: string) {
-  return `${dateString}T00:00:00.000-04:00`;
+function formatUtcDate(date: Date) {
+  return [
+    date.getUTCFullYear(),
+    String(date.getUTCMonth() + 1).padStart(2, "0"),
+    String(date.getUTCDate()).padStart(2, "0"),
+  ].join("-");
 }
 
-function endOfDayIso(dateString: string) {
-  return `${dateString}T23:59:59.999-04:00`;
+function currentOperationalDate() {
+  const parts = getManausDateParts(new Date());
+  return `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+}
+
+function getOperationalDate(request: WaitlistRequest) {
+  const parts = getManausDateParts(request.created_at);
+  const baseDate = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+
+  if (request.escala_dia_label === "Hoje") {
+    return formatUtcDate(baseDate);
+  }
+
+  const targetWeekdayMap: Record<string, number> = {
+    Domingo: 0,
+    Sexta: 5,
+    "Sábado": 6,
+  };
+
+  const targetWeekday = targetWeekdayMap[request.escala_dia_label];
+  if (targetWeekday === undefined) {
+    return formatUtcDate(baseDate);
+  }
+
+  const result = new Date(baseDate);
+  while (result.getUTCDay() !== targetWeekday) {
+    result.setUTCDate(result.getUTCDate() + 1);
+  }
+
+  return formatUtcDate(result);
 }
 
 function buildSearchOrClause(search: string) {
@@ -69,20 +102,6 @@ async function getRequests(filters: PageFilters) {
     query = query.eq("status", filters.status);
   }
 
-  if (filters.usage === "available") {
-    query = query.or("is_used.is.null,is_used.eq.false");
-  }
-
-  if (filters.usage === "used") {
-    query = query.eq("is_used", true);
-  }
-
-  if (filters.date) {
-    query = query
-      .gte("created_at", startOfDayIso(filters.date))
-      .lte("created_at", endOfDayIso(filters.date));
-  }
-
   if (filters.search) {
     query = query.or(buildSearchOrClause(filters.search));
   }
@@ -93,7 +112,13 @@ async function getRequests(filters: PageFilters) {
     throw new Error(error.message);
   }
 
-  return (data || []) as WaitlistRequest[];
+  const requests = (data || []) as WaitlistRequest[];
+
+  if (!filters.date) {
+    return requests;
+  }
+
+  return requests.filter((request) => getOperationalDate(request) === filters.date);
 }
 
 function getSummary(requests: WaitlistRequest[]) {
@@ -120,17 +145,13 @@ export default async function Home({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const resolvedParams = (await searchParams) || {};
-  const defaultDay = currentOperationalDayLabel();
-  const rawDayParam = resolvedParams.day;
-  const parsedDayParam = firstParam(rawDayParam);
+  const defaultDate = currentOperationalDate();
   const filters: PageFilters = {
     search: firstParam(resolvedParams.search),
     praca: firstParam(resolvedParams.praca),
     horario: firstParam(resolvedParams.horario),
     status: firstParam(resolvedParams.status),
-    day: parsedDayParam || (rawDayParam === undefined ? defaultDay : ""),
-    date: firstParam(resolvedParams.date),
-    usage: firstParam(resolvedParams.usage),
+    date: firstParam(resolvedParams.date) || defaultDate,
   };
 
   const requests = await getRequests(filters);
@@ -184,28 +205,11 @@ export default async function Home({
             ))}
           </select>
 
-          <select className="select-input" name="day" defaultValue={filters.day}>
-            <option value="">Todos os dias</option>
-            {dias.map((day) => (
-              <option key={day} value={day}>
-                {day}
-              </option>
-            ))}
-          </select>
-
           <select className="select-input" name="status" defaultValue={filters.status}>
             <option value="">Todos os status</option>
             {statuses.map((status) => (
               <option key={status} value={status}>
                 {status}
-              </option>
-            ))}
-          </select>
-
-          <select className="select-input" name="usage" defaultValue={filters.usage}>
-            {usages.map((usage) => (
-              <option key={usage.label} value={usage.value}>
-                {usage.label}
               </option>
             ))}
           </select>
