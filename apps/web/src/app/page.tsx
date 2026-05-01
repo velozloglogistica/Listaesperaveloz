@@ -21,6 +21,18 @@ function firstParam(value?: string | string[]) {
   return value ?? "";
 }
 
+function currentOperationalDayLabel() {
+  const weekday = new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    timeZone: "America/Manaus",
+  }).format(new Date());
+
+  if (weekday === "Fri") return "Sexta";
+  if (weekday === "Sat") return "Sábado";
+  if (weekday === "Sun") return "Domingo";
+  return "Hoje";
+}
+
 function startOfDayIso(dateString: string) {
   return `${dateString}T00:00:00.000-04:00`;
 }
@@ -108,12 +120,15 @@ export default async function Home({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const resolvedParams = (await searchParams) || {};
+  const defaultDay = currentOperationalDayLabel();
+  const rawDayParam = resolvedParams.day;
+  const parsedDayParam = firstParam(rawDayParam);
   const filters: PageFilters = {
     search: firstParam(resolvedParams.search),
     praca: firstParam(resolvedParams.praca),
     horario: firstParam(resolvedParams.horario),
     status: firstParam(resolvedParams.status),
-    day: firstParam(resolvedParams.day),
+    day: parsedDayParam || (rawDayParam === undefined ? defaultDay : ""),
     date: firstParam(resolvedParams.date),
     usage: firstParam(resolvedParams.usage),
   };
