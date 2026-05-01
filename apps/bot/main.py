@@ -169,7 +169,8 @@ def summary_text(data: dict) -> str:
         f"Telefone: {format_phone(data['telefone'])}\n"
         f"Praça: {data['praca']}\n"
         f"Horário: {data['horario_label']}\n"
-        f"Dia da escala: {data['escala_dia_label']}"
+        f"Dia da escala: {data['escala_dia_label']}\n"
+        f"Data da escala: {format_scale_date(data['escala_data'])}"
     )
 
 
@@ -177,32 +178,51 @@ def now_manaus() -> datetime:
     return datetime.now(MANAUS_TZ)
 
 
+def format_scale_date(value: str) -> str:
+    try:
+        return datetime.fromisoformat(value).strftime("%d/%m/%Y")
+    except ValueError:
+        return value
+
+
+def calculate_scale_date(label: str) -> str:
+    current_date = now_manaus().date()
+    if label == "Hoje":
+        return current_date.isoformat()
+
+    target_weekday = {
+        "Sexta": 4,
+        "Sábado": 5,
+        "Domingo": 6,
+    }.get(label)
+
+    if target_weekday is None:
+        return current_date.isoformat()
+
+    result = current_date
+    while result.weekday() != target_weekday:
+        result += timedelta(days=1)
+
+    return result.isoformat()
+
+
 def set_scale_day(context: ContextTypes.DEFAULT_TYPE, label: str) -> None:
     context.user_data["escala_dia_label"] = label
+    context.user_data["escala_data"] = calculate_scale_date(label)
 
 
 def available_day_options() -> list[str]:
     return DAY_OPTIONS_BY_WEEKDAY.get(now_manaus().weekday(), ["Hoje"])
 
 
-def start_and_end_of_today_manaus() -> tuple[datetime, datetime]:
-    current = now_manaus()
-    start = current.replace(hour=0, minute=0, second=0, microsecond=0)
-    end = start + timedelta(days=1) - timedelta(microseconds=1)
-    return start, end
-
-
 def has_conflicting_request(context: ContextTypes.DEFAULT_TYPE) -> bool:
-    start, end = start_and_end_of_today_manaus()
     response = (
         supabase.table("waitlist_requests")
         .select("id")
         .eq("cpf", context.user_data["cpf"])
         .eq("praca", context.user_data["praca"])
         .eq("horario_label", context.user_data["horario_label"])
-        .eq("escala_dia_label", context.user_data.get("escala_dia_label", "Hoje"))
-        .gte("created_at", start.isoformat())
-        .lte("created_at", end.isoformat())
+        .eq("escala_data", context.user_data["escala_data"])
         .execute()
     )
 
@@ -372,6 +392,7 @@ def save_waitlist_request(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         "horario_inicio": context.user_data["horario_inicio"],
         "horario_fim": context.user_data["horario_fim"],
         "escala_dia_label": context.user_data.get("escala_dia_label", "Hoje"),
+        "escala_data": context.user_data["escala_data"],
         "status": "pendente",
         "origem": "telegram",
         "telegram_user_id": update.effective_user.id if update.effective_user else None,
@@ -404,6 +425,7 @@ async def confirmar_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"Praça: {context.user_data['praca']}\n"
             f"Horário: {context.user_data['horario_label']}\n"
             f"Dia da escala: {context.user_data.get('escala_dia_label', 'Hoje')}\n"
+            f"Data da escala: {format_scale_date(context.user_data['escala_data'])}\n"
             f"Recebido em: {created_at}"
         )
     except Exception as exc:
@@ -411,7 +433,7 @@ async def confirmar_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         message = str(exc).lower()
         if "duplicate" in message or "unique" in message:
             await query.edit_message_text(
-                "Você já possui uma solicitação para essa praça e horário hoje."
+                "Você já possui uma solicitação para essa praça, horário e data."
             )
         else:
             await query.edit_message_text(

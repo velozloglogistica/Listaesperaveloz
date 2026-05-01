@@ -32,6 +32,12 @@ function rawCpf(cpf: string) {
   return cpf.replace(/\D/g, "");
 }
 
+function formatScaleDate(value: string) {
+  const [year, month, day] = value.split("-");
+  if (!year || !month || !day) return value;
+  return `${day}/${month}`;
+}
+
 function sortRequests(items: WaitlistRequest[]) {
   return [...items].sort((a, b) => {
     if (Boolean(a.is_used) !== Boolean(b.is_used)) {
@@ -150,6 +156,7 @@ export function GroupedBoard({ requests }: { requests: WaitlistRequest[] }) {
                             </div>
                             <div className="request-meta">
                               <span className="day-chip">{request.escala_dia_label}</span>
+                              <span className="request-time">{formatScaleDate(request.escala_data)}</span>
                               <span className="request-time">{formatDate(request.created_at)}</span>
                             </div>
                           </div>

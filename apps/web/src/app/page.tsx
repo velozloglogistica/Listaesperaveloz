@@ -14,63 +14,10 @@ function firstParam(value?: string | string[]) {
   return value ?? "";
 }
 
-function getManausDateParts(dateInput: string | Date) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    weekday: "short",
-    timeZone: "America/Manaus",
-  }).formatToParts(new Date(dateInput));
-
-  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
-
-  return {
-    year: Number(get("year")),
-    month: Number(get("month")),
-    day: Number(get("day")),
-    weekday: get("weekday"),
-  };
-}
-
-function formatUtcDate(date: Date) {
-  return [
-    date.getUTCFullYear(),
-    String(date.getUTCMonth() + 1).padStart(2, "0"),
-    String(date.getUTCDate()).padStart(2, "0"),
-  ].join("-");
-}
-
 function currentOperationalDate() {
-  const parts = getManausDateParts(new Date());
-  return `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
-}
-
-function getOperationalDate(request: WaitlistRequest) {
-  const parts = getManausDateParts(request.created_at);
-  const baseDate = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
-
-  if (request.escala_dia_label === "Hoje") {
-    return formatUtcDate(baseDate);
-  }
-
-  const targetWeekdayMap: Record<string, number> = {
-    Domingo: 0,
-    Sexta: 5,
-    "Sábado": 6,
-  };
-
-  const targetWeekday = targetWeekdayMap[request.escala_dia_label];
-  if (targetWeekday === undefined) {
-    return formatUtcDate(baseDate);
-  }
-
-  const result = new Date(baseDate);
-  while (result.getUTCDay() !== targetWeekday) {
-    result.setUTCDate(result.getUTCDate() + 1);
-  }
-
-  return formatUtcDate(result);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Manaus",
+  }).format(new Date());
 }
 
 function buildSearchOrClause(search: string) {
@@ -97,6 +44,10 @@ async function getRequests(filters: PageFilters) {
     query = query.or(buildSearchOrClause(filters.search));
   }
 
+  if (filters.date) {
+    query = query.eq("escala_data", filters.date);
+  }
+
   const { data, error } = await query;
 
   if (error) {
@@ -104,12 +55,7 @@ async function getRequests(filters: PageFilters) {
   }
 
   const requests = (data || []) as WaitlistRequest[];
-
-  if (!filters.date) {
-    return requests;
-  }
-
-  return requests.filter((request) => getOperationalDate(request) === filters.date);
+  return requests;
 }
 
 function getSummary(requests: WaitlistRequest[]) {

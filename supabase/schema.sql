@@ -23,6 +23,7 @@ create table public.waitlist_requests (
   escala_dia_label text not null default 'Hoje' check (
     escala_dia_label in ('Hoje', 'Sexta', 'Sábado', 'Domingo')
   ),
+  escala_data date not null default ((now() at time zone 'America/Manaus')::date),
 
   status text not null default 'pendente' check (
     status in ('pendente', 'agendado', 'recusado', 'cancelado')
@@ -43,8 +44,7 @@ on public.waitlist_requests (
   cpf,
   praca,
   horario_label,
-  escala_dia_label,
-  ((created_at at time zone 'America/Manaus')::date)
+  escala_data
 );
 
 create or replace function public.set_updated_at()
