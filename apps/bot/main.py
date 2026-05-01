@@ -65,8 +65,6 @@ HORARIOS = {
 
 DAY_OPTIONS_BY_WEEKDAY = {
     4: ["Sexta", "Sábado", "Domingo"],
-    5: ["Sábado", "Domingo"],
-    6: ["Domingo"],
 }
 
 MANAUS_TZ = ZoneInfo("America/Manaus")
@@ -211,8 +209,17 @@ def set_scale_day(context: ContextTypes.DEFAULT_TYPE, label: str) -> None:
     context.user_data["escala_data"] = calculate_scale_date(label)
 
 
+def default_scale_day_label() -> str:
+    weekday = now_manaus().weekday()
+    if weekday == 5:
+        return "Sábado"
+    if weekday == 6:
+        return "Domingo"
+    return "Hoje"
+
+
 def available_day_options() -> list[str]:
-    return DAY_OPTIONS_BY_WEEKDAY.get(now_manaus().weekday(), ["Hoje"])
+    return DAY_OPTIONS_BY_WEEKDAY.get(now_manaus().weekday(), [])
 
 
 def has_conflicting_request(context: ContextTypes.DEFAULT_TYPE) -> bool:
@@ -313,14 +320,14 @@ async def escolher_horario(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     contexto["horario_inicio"], contexto["horario_fim"] = HORARIOS[horario_label]
 
     day_options = available_day_options()
-    if day_options != ["Hoje"]:
+    if day_options:
         await update.message.reply_text(
             "Essa solicitação é para qual dia?",
             reply_markup=dia_keyboard(day_options),
         )
         return ESCOLHER_DIA
 
-    set_scale_day(context, "Hoje")
+    set_scale_day(context, default_scale_day_label())
     await update.message.reply_text(
         "Digite seu nome completo:",
         reply_markup=ReplyKeyboardRemove(),
