@@ -1,0 +1,16 @@
+.env
+.env.local
+apps/bot/.env
+apps/web/.env.local
+node_modules/
+.next/
+__pycache__/
+*.pyc
+perfil_99food/
+saida_agrupada/
+scripts.py/
+*.xlsx
+*.log
+venv/
+.venv/
+entregadores*.json
