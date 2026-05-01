@@ -8,7 +8,6 @@ export const dynamic = "force-dynamic";
 
 const pracas = ["Chapada", "Ponta Negra", "Santa Etelvina", "Tancredo Neves"];
 const horarios = ["Almoço", "Merenda", "Jantar"];
-const statuses = ["pendente", "agendado", "recusado", "cancelado"];
 
 function firstParam(value?: string | string[]) {
   if (Array.isArray(value)) return value[0] ?? "";
@@ -84,7 +83,7 @@ async function getRequests(filters: PageFilters) {
     .from("waitlist_requests")
     .select("*")
     .order("created_at", { ascending: false })
-    .limit(200);
+    .limit(filters.date ? 1000 : 500);
 
   if (filters.praca) {
     query = query.eq("praca", filters.praca);
@@ -92,14 +91,6 @@ async function getRequests(filters: PageFilters) {
 
   if (filters.horario) {
     query = query.eq("horario_label", filters.horario);
-  }
-
-  if (filters.day) {
-    query = query.eq("escala_dia_label", filters.day);
-  }
-
-  if (filters.status) {
-    query = query.eq("status", filters.status);
   }
 
   if (filters.search) {
@@ -146,12 +137,12 @@ export default async function Home({
 }) {
   const resolvedParams = (await searchParams) || {};
   const defaultDate = currentOperationalDate();
+  const rawDateParam = resolvedParams.date;
   const filters: PageFilters = {
     search: firstParam(resolvedParams.search),
     praca: firstParam(resolvedParams.praca),
     horario: firstParam(resolvedParams.horario),
-    status: firstParam(resolvedParams.status),
-    date: firstParam(resolvedParams.date) || defaultDate,
+    date: rawDateParam === undefined ? defaultDate : firstParam(rawDateParam),
   };
 
   const requests = await getRequests(filters);
@@ -201,15 +192,6 @@ export default async function Home({
             {horarios.map((horario) => (
               <option key={horario} value={horario}>
                 {horario}
-              </option>
-            ))}
-          </select>
-
-          <select className="select-input" name="status" defaultValue={filters.status}>
-            <option value="">Todos os status</option>
-            {statuses.map((status) => (
-              <option key={status} value={status}>
-                {status}
               </option>
             ))}
           </select>
