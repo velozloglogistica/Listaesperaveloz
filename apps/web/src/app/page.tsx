@@ -154,7 +154,7 @@ export default async function Home({
           </div>
         </form>
         <div className="panel-header">
-          <p>O filtro de data usa a data real da escala salva em `escala_data`.</p>
+          <p>O filtro de data usa a data real salva em escala_data.</p>
         </div>
       </section>
 
