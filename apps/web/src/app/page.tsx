@@ -1,13 +1,12 @@
 import { GroupedBoard } from "@/components/grouped-board";
+import { ManualWaitlistForm } from "@/components/manual-waitlist-form";
 import { RequestsTable } from "@/components/requests-table";
 import { SummaryCard } from "@/components/summary-card";
 import { supabaseServer } from "@/lib/supabase-server";
 import type { PageFilters, WaitlistRequest } from "@/lib/types";
+import { HORARIOS, PRACAS } from "@/lib/waitlist-constants";
 
 export const dynamic = "force-dynamic";
-
-const pracas = ["Chapada", "Ponta Negra", "Santa Etelvina", "Tancredo Neves"];
-const horarios = ["Almoço", "Merenda", "Jantar"];
 
 function firstParam(value?: string | string[]) {
   if (Array.isArray(value)) return value[0] ?? "";
@@ -115,6 +114,16 @@ export default async function Home({
       </section>
 
       <section className="panel">
+        <div className="panel-header">
+          <div>
+            <h2>Adicionar manualmente</h2>
+            <p>Permite cadastrar qualquer nome, turno e data direto pelo operacional.</p>
+          </div>
+        </div>
+        <ManualWaitlistForm defaultDate={filters.date || defaultDate} />
+      </section>
+
+      <section className="panel">
         <form className="filters-grid" method="get">
           <input
             className="text-input"
@@ -126,7 +135,7 @@ export default async function Home({
 
           <select className="select-input" name="praca" defaultValue={filters.praca}>
             <option value="">Todas as praças</option>
-            {pracas.map((praca) => (
+            {PRACAS.map((praca) => (
               <option key={praca} value={praca}>
                 {praca}
               </option>
@@ -135,7 +144,7 @@ export default async function Home({
 
           <select className="select-input" name="horario" defaultValue={filters.horario}>
             <option value="">Todos os horários</option>
-            {horarios.map((horario) => (
+            {Object.keys(HORARIOS).map((horario) => (
               <option key={horario} value={horario}>
                 {horario}
               </option>
@@ -154,7 +163,7 @@ export default async function Home({
           </div>
         </form>
         <div className="panel-header">
-          <p>O filtro de data usa a data real salva em escala_data.</p>
+          <p>O filtro de data usa a data real da escala salva em `escala_data`.</p>
         </div>
       </section>
 

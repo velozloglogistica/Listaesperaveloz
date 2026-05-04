@@ -16,6 +16,20 @@ function formatScaleDate(value: string) {
   return `${day}/${month}/${year}`;
 }
 
+function displayScaleLabel(request: WaitlistRequest) {
+  if (request.origem !== "manual") {
+    return request.escala_dia_label;
+  }
+
+  const date = new Date(`${request.escala_data}T12:00:00Z`);
+  const label = new Intl.DateTimeFormat("pt-BR", {
+    weekday: "long",
+    timeZone: "UTC",
+  }).format(date);
+
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
 function maskCpf(cpf: string) {
   const clean = cpf.replace(/\D/g, "");
   if (clean.length !== 11) return cpf;
@@ -75,7 +89,7 @@ export function RequestsTable({ requests }: { requests: WaitlistRequest[] }) {
               <td>{formatPhone(request.telefone)}</td>
               <td>{request.praca}</td>
               <td>{request.horario_label}</td>
-              <td>{request.escala_dia_label}</td>
+              <td>{displayScaleLabel(request)}</td>
               <td>{formatScaleDate(request.escala_data)}</td>
               <td>
                 <StatusBadge status={request.status} />

@@ -38,6 +38,20 @@ function formatScaleDate(value: string) {
   return `${day}/${month}`;
 }
 
+function displayScaleLabel(request: WaitlistRequest) {
+  if (request.origem !== "manual") {
+    return request.escala_dia_label;
+  }
+
+  const date = new Date(`${request.escala_data}T12:00:00Z`);
+  const label = new Intl.DateTimeFormat("pt-BR", {
+    weekday: "short",
+    timeZone: "UTC",
+  }).format(date);
+
+  return label.replace(".", "");
+}
+
 function sortRequests(items: WaitlistRequest[]) {
   return [...items].sort((a, b) => {
     if (Boolean(a.is_used) !== Boolean(b.is_used)) {
@@ -155,7 +169,7 @@ export function GroupedBoard({ requests }: { requests: WaitlistRequest[] }) {
                               <p>{rawCpf(request.cpf)}</p>
                             </div>
                             <div className="request-meta">
-                              <span className="day-chip">{request.escala_dia_label}</span>
+                              <span className="day-chip">{displayScaleLabel(request)}</span>
                               <span className="request-time">{formatScaleDate(request.escala_data)}</span>
                               <span className="request-time">{formatDate(request.created_at)}</span>
                             </div>
