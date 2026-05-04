@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { requireWaitlistAccess } from "@/lib/auth";
 import { supabaseServer } from "@/lib/supabase-server";
 import type { WaitlistStatus } from "@/lib/types";
 import { HORARIOS, PRACAS } from "@/lib/waitlist-constants";
@@ -50,6 +51,8 @@ function getScaleDayLabelFromDate(escalaData: string) {
 }
 
 export async function updateWaitlistStatus(formData: FormData) {
+  await requireWaitlistAccess();
+
   const id = String(formData.get("id") || "");
   const status = String(formData.get("status") || "") as WaitlistStatus;
 
@@ -70,6 +73,8 @@ export async function updateWaitlistStatus(formData: FormData) {
 }
 
 export async function toggleUsedState(formData: FormData) {
+  await requireWaitlistAccess();
+
   const id = String(formData.get("id") || "");
   const currentValue = String(formData.get("currentValue") || "false") === "true";
   const nextValue = !currentValue;
@@ -97,6 +102,8 @@ export async function createManualWaitlistRequest(
   _prevState: ManualWaitlistActionState,
   formData: FormData,
 ): Promise<ManualWaitlistActionState> {
+  await requireWaitlistAccess();
+
   const nome = String(formData.get("nome") || "").replace(/\s+/g, " ").trim();
   const cpf = sanitizeDigits(String(formData.get("cpf") || ""));
   const telefone = sanitizeDigits(String(formData.get("telefone") || ""));

@@ -1,7 +1,10 @@
 import { GroupedBoard } from "@/components/grouped-board";
+import { LogoutForm } from "@/components/logout-form";
 import { ManualWaitlistForm } from "@/components/manual-waitlist-form";
 import { RequestsTable } from "@/components/requests-table";
 import { SummaryCard } from "@/components/summary-card";
+import { UserManagementForm } from "@/components/user-management-form";
+import { requireWaitlistAccess } from "@/lib/auth";
 import { supabaseServer } from "@/lib/supabase-server";
 import type { PageFilters, WaitlistRequest } from "@/lib/types";
 import { HORARIOS, PRACAS } from "@/lib/waitlist-constants";
@@ -75,6 +78,19 @@ function getSummary(requests: WaitlistRequest[]) {
   return { total, pendentes, agendados, usados, disponiveis, mostActivePraca };
 }
 
+async function getAppUsers() {
+  const { data, error } = await supabaseServer
+    .from("app_users")
+    .select("id,full_name,email,role,can_access_waitlist,is_active,created_at")
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data || [];
+}
+
 export default async function Home({
   searchParams,
 }: {
@@ -90,20 +106,64 @@ export default async function Home({
     date: rawDateParam === undefined ? defaultDate : firstParam(rawDateParam),
   };
 
+  const currentUser = await requireWaitlistAccess();
   const requests = await getRequests(filters);
   const summary = getSummary(requests);
+  const appUsers = currentUser.role === "owner" ? await getAppUsers() : [];
 
   return (
     <main className="page-shell">
       <section className="hero">
-        <div>
-          <p className="eyebrow">VelozLog</p>
-          <h1>Lista de espera</h1>
-          <p className="hero-copy">
-            Painel para acompanhar as solicitações recebidas pelo bot do Telegram.
-          </p>
+        <div className="hero-topbar">
+          <div>
+            <p className="eyebrow">VelozLog</p>
+            <h1>Lista de espera</h1>
+            <p className="hero-copy">
+              Painel para acompanhar as solicitações recebidas pelo bot do Telegram.
+            </p>
+          </div>
+          <div className="hero-userbox">
+            <div>
+              <strong>{currentUser.full_name}</strong>
+              <p>
+                {currentUser.email} · {currentUser.role === "owner" ? "Owner" : "Area"}
+              </p>
+            </div>
+            <LogoutForm />
+          </div>
         </div>
       </section>
+
+      {currentUser.role === "owner" ? (
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <h2>Acessos do painel</h2>
+              <p>O owner cria logins e define quem pode acessar o modulo da lista de espera.</p>
+            </div>
+          </div>
+
+          <UserManagementForm />
+
+          <div className="users-list">
+            {appUsers.map((user) => (
+              <article key={user.id} className="user-card">
+                <div>
+                  <strong>{user.full_name}</strong>
+                  <p>{user.email}</p>
+                </div>
+                <div className="user-card-meta">
+                  <span className="day-chip">{user.role === "owner" ? "Owner" : "Area"}</span>
+                  <span className="request-time">
+                    {user.can_access_waitlist ? "Lista ativa" : "Sem modulo"}
+                  </span>
+                  <span className="request-time">{user.is_active ? "Ativo" : "Inativo"}</span>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="summary-grid">
         <SummaryCard title="Total exibido" value={summary.total} />

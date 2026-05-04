@@ -66,6 +66,14 @@ npm install
 npm run dev
 ```
 
+## Login e perfis
+
+- Rode `supabase/add_dashboard_auth.sql` no SQL Editor do Supabase
+- No primeiro acesso ao painel, a tela `/login` cria o primeiro `owner`
+- O `owner` entra no painel e cria os logins das areas
+- Cada login pode ser `owner` ou `area`
+- O modulo atual controlado por permissao e a `Lista de espera`
+
 ## Fluxo operacional no painel
 
 - o topo mostra cards com total, disponiveis, pendentes, agendados e usados

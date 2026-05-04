@@ -132,6 +132,28 @@ select {
   color: var(--muted);
 }
 
+.hero-topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.hero-userbox {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: #fffef9;
+}
+
+.hero-userbox p {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
 .filters-grid {
   display: grid;
   grid-template-columns: 2fr repeat(6, minmax(0, 1fr)) auto;
@@ -166,6 +188,18 @@ select {
 .manual-form-actions {
   display: flex;
   align-items: center;
+}
+
+.checkbox-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-2);
+  color: var(--text);
 }
 
 .manual-form-feedback {
@@ -229,6 +263,35 @@ select {
 .board-sections {
   display: grid;
   gap: 18px;
+}
+
+.users-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.user-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: #fffef9;
+}
+
+.user-card p {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+.user-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .overview-grid {
@@ -495,6 +558,49 @@ select {
   color: var(--muted);
 }
 
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--page);
+}
+
+.auth-card {
+  width: min(100%, 520px);
+  display: grid;
+  gap: 16px;
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(255, 246, 191, 0.55), #fffef9);
+  box-shadow: var(--shadow);
+}
+
+.auth-card h1 {
+  margin: 0;
+  font-size: clamp(30px, 4vw, 38px);
+}
+
+.auth-form {
+  display: grid;
+  gap: 12px;
+}
+
+.auth-block {
+  display: grid;
+  gap: 12px;
+}
+
+.auth-error {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid #f4c7cc;
+  border-radius: 12px;
+  background: #fff4f4;
+  color: #8a2633;
+}
+
 @media (max-width: 1080px) {
   .summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -514,6 +620,12 @@ select {
 @media (max-width: 720px) {
   .page-shell {
     padding: 18px 12px 32px;
+  }
+
+  .hero-topbar,
+  .user-card {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .overview-grid,
