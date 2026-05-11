@@ -1,13 +1,19 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { requireOwner, ownerExists } from "@/lib/auth";
+import { requireAppUser, requireOwner, ownerExists } from "@/lib/auth";
 import { createSupabaseAuthClient } from "@/lib/supabase-auth";
 import { supabaseServer } from "@/lib/supabase-server";
 import { getDefaultTenant } from "@/lib/tenant";
 
 export type UserManagementActionState = {
+  status: "idle" | "success" | "error";
+  message: string;
+};
+
+export type ProfileActionState = {
   status: "idle" | "success" | "error";
   message: string;
 };
@@ -45,6 +51,49 @@ export async function signOutAction() {
   const supabaseAuth = await createSupabaseAuthClient();
   await supabaseAuth.auth.signOut();
   redirect("/login");
+}
+
+export async function changeOwnPasswordAction(
+  _prevState: ProfileActionState,
+  formData: FormData,
+): Promise<ProfileActionState> {
+  await requireAppUser();
+
+  const password = String(formData.get("password") || "");
+  const confirmPassword = String(formData.get("confirm_password") || "");
+
+  if (!validPassword(password)) {
+    return {
+      status: "error",
+      message: "A nova senha precisa ter pelo menos 8 caracteres.",
+    };
+  }
+
+  if (password !== confirmPassword) {
+    return {
+      status: "error",
+      message: "A confirmacao de senha nao confere.",
+    };
+  }
+
+  const supabaseAuth = await createSupabaseAuthClient();
+  const { error } = await supabaseAuth.auth.updateUser({
+    password,
+  });
+
+  if (error) {
+    return {
+      status: "error",
+      message: error.message || "Nao foi possivel atualizar a senha.",
+    };
+  }
+
+  revalidatePath("/perfil");
+
+  return {
+    status: "success",
+    message: "Senha atualizada com sucesso. Esse login ja passa a usar a nova senha.",
+  };
 }
 
 export async function bootstrapOwnerAction(formData: FormData) {

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { AppShell } from "@/components/app-shell";
 import { SummaryCard } from "@/components/summary-card";
@@ -44,6 +45,11 @@ async function getDashboardSummary(tenantId: string) {
 
 export default async function Home() {
   const currentUser = await requireAppUser();
+
+  if (!currentUser.is_platform_admin && currentUser.membership?.role !== "owner") {
+    redirect("/lista-espera");
+  }
+
   const tenantId = currentUser.current_tenant.id;
   const summary = await getDashboardSummary(tenantId);
 
