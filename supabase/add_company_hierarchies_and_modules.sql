@@ -28,6 +28,7 @@ execute function public.set_updated_at();
 
 insert into public.modules (slug, name, description, is_active)
 values
+  ('dashboard', 'Dashboard', 'Mostra a visao inicial da empresa com indicadores e atalhos dos modulos.', true),
   ('waitlist', 'Lista de espera', 'Gerencia fila operacional, filtros, cards e cadastro manual.', true),
   ('users', 'Usuarios', 'Controla acessos, cadastro de logins e equipe da empresa.', true),
   ('hierarchies', 'Hierarquias', 'Cria equipes, perfis internos e segmenta modulos por empresa.', true),
@@ -60,7 +61,7 @@ insert into public.tenant_modules (tenant_id, module_id, is_enabled)
 select t.id, m.id, true
 from public.tenants t
 cross join public.modules m
-where m.slug in ('waitlist', 'users', 'hierarchies')
+where m.slug in ('dashboard', 'waitlist', 'users', 'hierarchies')
 on conflict (tenant_id, module_id) do nothing;
 
 create table if not exists public.tenant_hierarchies (
