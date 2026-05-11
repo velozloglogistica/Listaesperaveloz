@@ -46,7 +46,7 @@ async function getDashboardSummary(tenantId: string) {
 export default async function Home() {
   const currentUser = await requireAppUser();
 
-  if (!currentUser.is_platform_admin && currentUser.membership?.role !== "owner") {
+  if (!canAccessModule(currentUser, "dashboard")) {
     redirect("/lista-espera");
   }
 

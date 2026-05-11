@@ -21,7 +21,11 @@ type AppShellProps = {
 
 export function AppShell({ currentPath, title, description, user, children }: AppShellProps) {
   const links = [
-    { href: "/", label: "Inicio", visible: true },
+    {
+      href: "/",
+      label: "Inicio",
+      visible: canAccessModule(user, "dashboard"),
+    },
     { href: "/lista-espera", label: "Lista de espera", visible: canAccessModule(user, "waitlist") },
     { href: "/usuarios", label: "Usuarios", visible: hasCompanyPermission(user, "manage_users") },
     {

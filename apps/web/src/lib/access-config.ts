@@ -1,5 +1,10 @@
 export const MODULE_CATALOG = [
   {
+    slug: "dashboard",
+    name: "Dashboard",
+    description: "Mostra a visao inicial da empresa com indicadores e atalhos dos modulos.",
+  },
+  {
     slug: "waitlist",
     name: "Lista de espera",
     description: "Gerencia fila operacional, filtros, cards e cadastro manual.",
@@ -54,7 +59,7 @@ export const PERMISSION_CATALOG = [
   },
 ] as const;
 
-export const CORE_COMPANY_MODULE_SLUGS = ["waitlist", "users", "hierarchies"] as const;
+export const CORE_COMPANY_MODULE_SLUGS = ["dashboard", "waitlist", "users", "hierarchies"] as const;
 
 export type ModuleSlug = (typeof MODULE_CATALOG)[number]["slug"];
 export type PermissionKey = (typeof PERMISSION_CATALOG)[number]["key"];
