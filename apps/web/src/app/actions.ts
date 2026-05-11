@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { requireWaitlistAccess } from "@/lib/auth";
 import { supabaseServer } from "@/lib/supabase-server";
 import type { WaitlistStatus } from "@/lib/types";
 import { HORARIOS, PRACAS } from "@/lib/waitlist-constants";
@@ -50,6 +51,9 @@ function getScaleDayLabelFromDate(escalaData: string) {
 }
 
 export async function updateWaitlistStatus(formData: FormData) {
+  const currentUser = await requireWaitlistAccess();
+  const tenantId = currentUser.current_tenant.id;
+
   const id = String(formData.get("id") || "");
   const status = String(formData.get("status") || "") as WaitlistStatus;
 
@@ -60,7 +64,8 @@ export async function updateWaitlistStatus(formData: FormData) {
   const { error } = await supabaseServer
     .from("waitlist_requests")
     .update({ status })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("tenant_id", tenantId);
 
   if (error) {
     throw new Error(error.message);
@@ -70,6 +75,9 @@ export async function updateWaitlistStatus(formData: FormData) {
 }
 
 export async function toggleUsedState(formData: FormData) {
+  const currentUser = await requireWaitlistAccess();
+  const tenantId = currentUser.current_tenant.id;
+
   const id = String(formData.get("id") || "");
   const currentValue = String(formData.get("currentValue") || "false") === "true";
   const nextValue = !currentValue;
@@ -84,7 +92,8 @@ export async function toggleUsedState(formData: FormData) {
       is_used: nextValue,
       used_at: nextValue ? new Date().toISOString() : null,
     })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("tenant_id", tenantId);
 
   if (error) {
     throw new Error(error.message);
@@ -97,6 +106,9 @@ export async function createManualWaitlistRequest(
   _prevState: ManualWaitlistActionState,
   formData: FormData,
 ): Promise<ManualWaitlistActionState> {
+  const currentUser = await requireWaitlistAccess();
+  const tenantId = currentUser.current_tenant.id;
+
   const nome = String(formData.get("nome") || "").replace(/\s+/g, " ").trim();
   const cpf = sanitizeDigits(String(formData.get("cpf") || ""));
   const telefone = sanitizeDigits(String(formData.get("telefone") || ""));
@@ -131,6 +143,7 @@ export async function createManualWaitlistRequest(
   const { data: existing, error: existingError } = await supabaseServer
     .from("waitlist_requests")
     .select("id")
+    .eq("tenant_id", tenantId)
     .eq("cpf", cpf)
     .eq("praca", praca)
     .eq("horario_label", horarioLabel)
@@ -152,6 +165,7 @@ export async function createManualWaitlistRequest(
   const escalaDiaLabel = getScaleDayLabelFromDate(escalaData);
 
   const { error } = await supabaseServer.from("waitlist_requests").insert({
+    tenant_id: tenantId,
     nome,
     cpf,
     telefone,
