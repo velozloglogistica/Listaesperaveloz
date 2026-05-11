@@ -2,6 +2,7 @@ export type WaitlistStatus = "pendente" | "agendado" | "recusado" | "cancelado";
 
 export type WaitlistRequest = {
   id: string;
+  tenant_id: string;
   created_at: string;
   updated_at: string;
   nome: string;

@@ -32,7 +32,7 @@ export default async function LoginPage({
 }) {
   const currentUser = await getCurrentAppUser();
 
-  if (currentUser?.can_access_waitlist) {
+  if (currentUser?.membership?.can_access_waitlist) {
     redirect("/");
   }
 
@@ -56,7 +56,7 @@ export default async function LoginPage({
 
         {errorMessage ? <p className="auth-error">{errorMessage}</p> : null}
 
-        {currentUser && !currentUser.can_access_waitlist ? (
+        {currentUser && !currentUser.membership?.can_access_waitlist ? (
           <div className="auth-block">
             <p className="auth-error">
               Seu login existe, mas ainda nao tem acesso ao modulo Lista de espera.

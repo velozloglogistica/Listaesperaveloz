@@ -66,13 +66,22 @@ npm install
 npm run dev
 ```
 
-## Login e perfis
+## Login, empresas e hierarquias
 
-- Rode `supabase/add_dashboard_auth.sql` no SQL Editor do Supabase
-- No primeiro acesso ao painel, a tela `/login` cria o primeiro `owner`
-- O `owner` entra no painel e cria os logins das areas
-- Cada login pode ser `owner` ou `area`
-- O modulo atual controlado por permissao e a `Lista de espera`
+- Para banco ja existente, rode nesta ordem:
+  - `supabase/sync_database_with_saas_app.sql`
+  - `supabase/add_company_hierarchies_and_modules.sql`
+- Para banco novo do zero, rode:
+  - `supabase/saas_multitenant_foundation.sql`
+- No primeiro acesso ao painel, a tela `/login` usa o usuario criado no Supabase Auth
+- O `Owner SaaS` cria empresas, escolhe quais modulos cada empresa recebe e cria o owner inicial dela
+- O owner da empresa entra no painel e usa:
+  - `Usuarios` para criar logins da empresa
+  - `Hierarquias` para criar cargos/equipes com nome livre
+- Cada hierarquia define:
+  - quais modulos a equipe pode ver
+  - quais permissoes internas essa equipe recebe
+- O modulo atual operacional continua sendo a `Lista de espera`, mas o painel ja esta pronto para crescer com outros modulos
 
 ## Fluxo operacional no painel
 
