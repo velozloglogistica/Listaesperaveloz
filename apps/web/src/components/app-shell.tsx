@@ -5,7 +5,14 @@ import { LogoutForm } from "@/components/logout-form";
 import { canAccessModule, hasCompanyPermission, type AppUser } from "@/lib/auth";
 
 type AppShellProps = {
-  currentPath: "/" | "/empresas" | "/lista-espera" | "/equipe-saas" | "/usuarios" | "/hierarquias";
+  currentPath:
+    | "/"
+    | "/empresas"
+    | "/lista-espera"
+    | "/equipe-saas"
+    | "/usuarios"
+    | "/hierarquias"
+    | "/perfil";
   title: string;
   description: string;
   user: AppUser;
@@ -22,6 +29,7 @@ export function AppShell({ currentPath, title, description, user, children }: Ap
       label: "Hierarquias",
       visible: hasCompanyPermission(user, "manage_hierarchies"),
     },
+    { href: "/perfil", label: "Perfil", visible: true },
     { href: "/equipe-saas", label: "Equipe SaaS", visible: user.is_platform_admin },
     { href: "/empresas", label: "Empresas", visible: user.is_platform_admin },
   ].filter((item) => item.visible);
