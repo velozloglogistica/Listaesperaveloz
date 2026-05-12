@@ -161,8 +161,8 @@ export function BagCourierForm({ cities, regions, operators }: BagCourierFormPro
 
       <div className="access-grid">
         <div className="access-panel">
-          <h3>Regioes desejadas</h3>
-          <p>As regioes ficam vinculadas a cidade escolhida acima.</p>
+          <h3>Hot Zones desejadas</h3>
+          <p>As Hot Zones ficam vinculadas a cidade escolhida acima.</p>
           <div className="access-checkbox-grid">
             {filteredRegions.length > 0 ? (
               filteredRegions.map((region) => (
@@ -176,8 +176,8 @@ export function BagCourierForm({ cities, regions, operators }: BagCourierFormPro
               ))
             ) : (
               <div className="platform-form-note">
-                <strong>Cadastre regioes primeiro</strong>
-                <p>Essa cidade ainda nao possui regioes ativas para selecionar.</p>
+                <strong>Cadastre Hot Zones primeiro</strong>
+                <p>Essa cidade ainda nao possui Hot Zones ativas para selecionar.</p>
               </div>
             )}
           </div>

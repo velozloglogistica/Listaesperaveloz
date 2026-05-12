@@ -176,6 +176,16 @@ export async function requireHierarchyManagementAccess() {
   return user;
 }
 
+export async function requireSettingsAccess() {
+  const user = await requireAppUser();
+
+  if (!hasCompanyPermission(user, "edit_settings")) {
+    redirect("/?error=sem_permissao_configuracoes");
+  }
+
+  return user;
+}
+
 export async function ownerExists() {
   const tenant = await getDefaultTenant();
   const { count, error } = await supabaseServer

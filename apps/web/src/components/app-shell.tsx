@@ -10,6 +10,7 @@ type AppShellProps = {
     | "/empresas"
     | "/lista-espera"
     | "/informacoes-bag"
+    | "/perfil-empresa"
     | "/equipe-saas"
     | "/usuarios"
     | "/hierarquias"
@@ -38,6 +39,11 @@ export function AppShell({ currentPath, title, description, user, children }: Ap
       href: "/informacoes-bag",
       label: "Informacoes de BAG",
       visible: canAccessModule(user, "bag_info"),
+    },
+    {
+      href: "/perfil-empresa",
+      label: "Perfil da empresa",
+      visible: hasCompanyPermission(user, "edit_settings"),
     },
     { href: "/perfil", label: "Perfil", visible: true },
     { href: "/equipe-saas", label: "Equipe SaaS", visible: user.is_platform_admin },

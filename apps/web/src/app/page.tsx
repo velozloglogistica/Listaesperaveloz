@@ -99,6 +99,12 @@ export default async function Home() {
               <p>Consulte entregadores, acompanhe retirada de BAG e cadastre novos perfis.</p>
             </Link>
           ) : null}
+          {hasCompanyPermission(currentUser, "edit_settings") ? (
+            <Link href="/perfil-empresa" className="module-card">
+              <strong>Perfil da empresa</strong>
+              <p>Configure credenciais West Wind, cidades e Hot Zones da operacao.</p>
+            </Link>
+          ) : null}
           {currentUser.is_platform_admin ? (
             <Link href="/equipe-saas" className="module-card">
               <strong>Equipe SaaS</strong>

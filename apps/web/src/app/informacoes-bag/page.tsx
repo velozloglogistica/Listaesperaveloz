@@ -1,9 +1,8 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 
 import { AppShell } from "@/components/app-shell";
-import { BagCityForm } from "@/components/bag-city-form";
 import { BagCourierForm } from "@/components/bag-courier-form";
-import { BagRegionForm } from "@/components/bag-region-form";
 import { BagStatusForm } from "@/components/bag-status-form";
 import { SummaryCard } from "@/components/summary-card";
 import {
@@ -288,11 +287,11 @@ export default async function InformacoesBagPage() {
           <section className="summary-grid">
             <SummaryCard title="Entregadores" value={couriers.length} />
             <SummaryCard
-              title="BAG com entregador"
+              title="Com BAG"
               value={couriers.filter((item) => item.bag_status === "bag_com_entregador").length}
             />
             <SummaryCard
-              title="Chamar para pegar"
+              title="Sem BAG"
               value={couriers.filter((item) => item.bag_status === "chamar_para_pegar_bag").length}
             />
             <SummaryCard
@@ -301,63 +300,16 @@ export default async function InformacoesBagPage() {
             />
           </section>
 
-          <section className="panel">
-            <div className="panel-header">
-              <div>
-                <h2>Cidades e regioes da empresa</h2>
-                <p>Cadastre primeiro as cidades atendidas e depois as regioes disponiveis.</p>
-              </div>
-            </div>
-
-            <div className="access-grid">
-              <div className="access-panel">
-                <h3>Nova cidade</h3>
-                <p>Essa lista define onde o entregador pode ser cadastrado.</p>
-                <BagCityForm />
-              </div>
-
-              <div className="access-panel">
-                <h3>Nova regiao</h3>
-                <p>As regioes ficam vinculadas a uma cidade da empresa.</p>
-                {citiesResult.data.length > 0 ? (
-                  <BagRegionForm cities={citiesResult.data} />
-                ) : (
-                  <div className="platform-note">
-                    <p>Cadastre pelo menos uma cidade antes de criar regioes.</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="users-list">
-              {citiesResult.data.map((city) => {
-                const cityRegions = regionsResult.data.filter((region) => region.city_id === city.id);
-
-                return (
-                  <article key={city.id} className="user-card user-card-stack">
-                    <div>
-                      <strong>{city.name}</strong>
-                      <p>
-                        Regioes: {cityRegions.map((region) => region.name).join(" · ") || "Sem regioes"}
-                      </p>
-                    </div>
-                    <div className="user-card-meta">
-                      <span className="day-chip">{city.is_active ? "Ativa" : "Inativa"}</span>
-                      <span className="request-time">{cityRegions.length} regiao(oes)</span>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          </section>
-
           {citiesResult.data.length === 0 ? (
             <section className="panel">
               <div className="panel-header">
                 <div>
-                  <h2>Cadastre a primeira cidade</h2>
-                  <p>Sem cidade cadastrada ainda nao da para criar entregadores no modulo BAG.</p>
+                  <h2>Configure o Perfil da empresa</h2>
+                  <p>Cadastre a primeira cidade no Perfil da empresa antes de criar entregadores no modulo BAG.</p>
                 </div>
+                <Link href="/perfil-empresa" className="secondary-button link-button">
+                  Abrir Perfil da empresa
+                </Link>
               </div>
             </section>
           ) : null}
@@ -366,12 +318,15 @@ export default async function InformacoesBagPage() {
             <section className="panel">
               <div className="panel-header">
                 <div>
-                  <h2>Cadastre pelo menos uma regiao</h2>
+                  <h2>Cadastre pelo menos uma Hot Zone</h2>
                   <p>
-                    O entregador precisa informar qual regiao deseja atuar antes de ser salvo no
+                    O entregador precisa informar qual Hot Zone deseja atuar antes de ser salvo no
                     banco.
                   </p>
                 </div>
+                <Link href="/perfil-empresa" className="secondary-button link-button">
+                  Abrir Perfil da empresa
+                </Link>
               </div>
             </section>
           ) : null}
@@ -421,7 +376,7 @@ export default async function InformacoesBagPage() {
                       </strong>
                       <p>Telefone: {courier.phone_number}</p>
                       <p>Cidade: {courier.city_name}</p>
-                      <p>Regioes: {courier.regions.join(" · ") || "Sem regiao definida"}</p>
+                      <p>Hot Zones: {courier.regions.join(" · ") || "Sem Hot Zone definida"}</p>
                       <p>Turnos: {formatShiftLabels(courier.preferred_shifts)}</p>
                       <p>Dias: {formatWeekdayLabels(courier.preferred_weekdays)}</p>
                       <p>Veiculo: {BAG_VEHICLE_LABELS[courier.delivery_vehicle]}</p>

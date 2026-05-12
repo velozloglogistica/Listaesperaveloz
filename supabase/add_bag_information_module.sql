@@ -30,6 +30,22 @@ cross join public.modules m
 where m.slug = 'bag_info'
 on conflict (tenant_id, module_id) do nothing;
 
+create table if not exists public.tenant_settings (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  tenant_id uuid not null unique references public.tenants (id) on delete cascade,
+  westwind_login text,
+  westwind_password text,
+  updated_by uuid references public.app_users (id)
+);
+
+drop trigger if exists trg_tenant_settings_updated_at on public.tenant_settings;
+create trigger trg_tenant_settings_updated_at
+before update on public.tenant_settings
+for each row
+execute function public.set_updated_at();
+
 create table if not exists public.tenant_cities (
   id uuid primary key default gen_random_uuid(),
   created_at timestamptz not null default now(),
