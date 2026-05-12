@@ -89,6 +89,7 @@ export async function createTenantCityAction(
   }
 
   revalidatePath("/informacoes-bag");
+  revalidatePath("/perfil-empresa");
 
   return {
     status: "success",
@@ -106,11 +107,11 @@ export async function createTenantRegionAction(
   const name = normalizeText(String(formData.get("name") || ""));
 
   if (!cityId) {
-    return { status: "error", message: "Selecione a cidade dessa regiao." };
+    return { status: "error", message: "Selecione a cidade dessa Hot Zone." };
   }
 
   if (name.length < 2) {
-    return { status: "error", message: "Digite um nome valido para a regiao." };
+    return { status: "error", message: "Digite um nome valido para a Hot Zone." };
   }
 
   const { data: cityData, error: cityError } = await supabaseServer
@@ -130,7 +131,7 @@ export async function createTenantRegionAction(
   }
 
   if (!cityData) {
-    return { status: "error", message: "Cidade invalida para essa regiao." };
+    return { status: "error", message: "Cidade invalida para essa Hot Zone." };
   }
 
   const { error } = await supabaseServer.from("tenant_regions").insert({
@@ -148,15 +149,16 @@ export async function createTenantRegionAction(
 
     return {
       status: "error",
-      message: messageFromError(error, "Essa regiao ja esta cadastrada para essa cidade."),
+      message: messageFromError(error, "Essa Hot Zone ja esta cadastrada para essa cidade."),
     };
   }
 
   revalidatePath("/informacoes-bag");
+  revalidatePath("/perfil-empresa");
 
   return {
     status: "success",
-    message: "Regiao cadastrada com sucesso.",
+    message: "Hot Zone cadastrada com sucesso.",
   };
 }
 
@@ -228,7 +230,7 @@ export async function createBagCourierAction(
   }
 
   if (selectedRegionIds.length === 0) {
-    return { status: "error", message: "Selecione pelo menos uma regiao desejada." };
+    return { status: "error", message: "Selecione pelo menos uma Hot Zone desejada." };
   }
 
   if (preferredShifts.length === 0) {
@@ -294,7 +296,7 @@ export async function createBagCourierAction(
   ) {
     return {
       status: "error",
-      message: "As regioes precisam pertencer a cidade escolhida.",
+      message: "As Hot Zones precisam pertencer a cidade escolhida.",
     };
   }
 

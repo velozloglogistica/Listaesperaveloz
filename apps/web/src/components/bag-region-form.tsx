@@ -39,11 +39,11 @@ export function BagRegionForm({ cities }: BagRegionFormProps) {
         ))}
       </select>
 
-      <input className="text-input" type="text" name="name" placeholder="Nome da regiao" required />
+      <input className="text-input" type="text" name="name" placeholder="Nome da Hot Zone" required />
 
       <div className="manual-form-actions">
         <button type="submit" className="primary-button">
-          Adicionar regiao
+          Adicionar Hot Zone
         </button>
       </div>
 
