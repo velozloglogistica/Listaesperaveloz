@@ -175,6 +175,7 @@ values
   ('waitlist', 'Lista de espera', 'Gerencia fila operacional, filtros, cards e cadastro manual.', true),
   ('users', 'Usuarios', 'Controla acessos, cadastro de logins e equipe da empresa.', true),
   ('hierarchies', 'Hierarquias', 'Cria equipes, perfis internos e segmenta modulos por empresa.', true),
+  ('bag_info', 'Informacoes de BAG', 'Consulta entregadores, controla BAG e cadastra novas informacoes operacionais.', true),
   ('reports', 'Relatorios', 'Acompanha indicadores, resultados e visao consolidada.', true),
   ('settings', 'Configuracoes', 'Gerencia parametros internos e preferencias da empresa.', true)
 on conflict (slug) do update

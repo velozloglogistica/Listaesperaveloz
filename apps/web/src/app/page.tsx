@@ -102,6 +102,12 @@ export default async function Home() {
               <p>Crie nomes personalizados como Operacional, Supervisao e Backoffice.</p>
             </Link>
           ) : null}
+          {canAccessModule(currentUser, "bag_info") ? (
+            <Link href="/informacoes-bag" className="module-card">
+              <strong>Informacoes de BAG</strong>
+              <p>Consulte entregadores, acompanhe retirada de BAG e cadastre novos perfis.</p>
+            </Link>
+          ) : null}
           {currentUser.is_platform_admin ? (
             <Link href="/equipe-saas" className="module-card">
               <strong>Equipe SaaS</strong>
