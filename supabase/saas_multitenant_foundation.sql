@@ -83,6 +83,7 @@ execute function public.set_updated_at();
 
 insert into public.modules (slug, name, description, is_active)
 values
+  ('bag_info', 'Informacoes de BAG', 'Consulta entregadores, controla BAG e cadastra novas informacoes operacionais.', true),
   ('waitlist', 'Lista de espera', 'Gerencia fila operacional, filtros, cards e cadastro manual.', true),
   ('users', 'Usuarios', 'Controla acessos, cadastro de logins e equipe da empresa.', true),
   ('hierarchies', 'Hierarquias', 'Cria equipes, perfis internos e segmenta modulos por empresa.', true),

@@ -20,6 +20,11 @@ export const MODULE_CATALOG = [
     description: "Cria equipes, perfis internos e segmenta modulos por empresa.",
   },
   {
+    slug: "bag_info",
+    name: "Informacoes de BAG",
+    description: "Consulta entregadores, controla BAG e cadastra novas informacoes operacionais.",
+  },
+  {
     slug: "reports",
     name: "Relatorios",
     description: "Acompanha indicadores, resultados e visao consolidada.",
