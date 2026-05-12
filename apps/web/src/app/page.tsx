@@ -8,38 +8,45 @@ import { supabaseServer } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
 
-async function getDashboardSummary(tenantId: string) {
-  const { data: requests, error: requestsError } = await supabaseServer
-    .from("waitlist_requests")
-    .select("id,status,is_used,praca")
-    .eq("tenant_id", tenantId)
-    .limit(2000);
+async function getSaasDashboardSummary() {
+  const [
+    { count: companiesCount, error: companiesError },
+    { count: activeCompaniesCount, error: activeCompaniesError },
+    { count: inactiveCompaniesCount, error: inactiveCompaniesError },
+    { count: usersCount, error: usersError },
+    { count: activeMembershipsCount, error: membershipsError },
+  ] = await Promise.all([
+    supabaseServer.from("tenants").select("id", { count: "exact", head: true }),
+    supabaseServer.from("tenants").select("id", { count: "exact", head: true }).eq("is_active", true),
+    supabaseServer.from("tenants").select("id", { count: "exact", head: true }).eq("is_active", false),
+    supabaseServer.from("app_users").select("id", { count: "exact", head: true }).eq("is_active", true),
+    supabaseServer
+      .from("tenant_memberships")
+      .select("id", { count: "exact", head: true })
+      .eq("is_active", true),
+  ]);
 
-  if (requestsError) {
-    throw new Error(requestsError.message);
+  if (companiesError || activeCompaniesError || inactiveCompaniesError || usersError || membershipsError) {
+    throw new Error(
+      companiesError?.message ||
+        activeCompaniesError?.message ||
+        inactiveCompaniesError?.message ||
+        usersError?.message ||
+        membershipsError?.message,
+    );
   }
 
-  const { count: teamCount, error: teamError } = await supabaseServer
-    .from("tenant_memberships")
-    .select("id", { count: "exact", head: true })
-    .eq("tenant_id", tenantId)
-    .eq("is_active", true);
-
-  if (teamError) {
-    throw new Error(teamError.message);
-  }
-
-  const total = requests?.length || 0;
-  const pendentes = requests?.filter((item) => item.status === "pendente").length || 0;
-  const agendados = requests?.filter((item) => item.status === "agendado").length || 0;
-  const usados = requests?.filter((item) => item.is_used).length || 0;
+  const totalCompanies = companiesCount || 0;
+  const totalUsers = usersCount || 0;
+  const avgUsersPerCompany =
+    totalCompanies > 0 ? Number(((activeMembershipsCount || 0) / totalCompanies).toFixed(1)) : 0;
 
   return {
-    total,
-    pendentes,
-    agendados,
-    usados,
-    teamCount: teamCount || 0,
+    totalCompanies,
+    totalUsers,
+    avgUsersPerCompany,
+    activeCompanies: activeCompaniesCount || 0,
+    inactiveCompanies: inactiveCompaniesCount || 0,
   };
 }
 
@@ -50,8 +57,7 @@ export default async function Home() {
     redirect("/lista-espera");
   }
 
-  const tenantId = currentUser.current_tenant.id;
-  const summary = await getDashboardSummary(tenantId);
+  const summary = currentUser.is_platform_admin ? await getSaasDashboardSummary() : null;
 
   return (
     <AppShell
@@ -60,12 +66,15 @@ export default async function Home() {
       description="Entrada principal da plataforma para navegar entre empresas, modulos e operacao."
       user={currentUser}
     >
-      <section className="summary-grid">
-        <SummaryCard title="Total da fila" value={summary.total} />
-        <SummaryCard title="Aguardando acao" value={summary.pendentes} />
-        <SummaryCard title="Agendados" value={summary.agendados} />
-        <SummaryCard title="Equipe ativa" value={summary.teamCount} />
-      </section>
+      {summary ? (
+        <section className="summary-grid">
+          <SummaryCard title="Empresas" value={summary.totalCompanies} />
+          <SummaryCard title="Usuarios" value={summary.totalUsers} />
+          <SummaryCard title="Ticket medio por empresa" value={summary.avgUsersPerCompany} />
+          <SummaryCard title="Empresas ativas" value={summary.activeCompanies} />
+          <SummaryCard title="Empresas inativas" value={summary.inactiveCompanies} />
+        </section>
+      ) : null}
 
       <section className="panel">
         <div className="panel-header">
