@@ -3,12 +3,7 @@
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 
 import { createBagCourierAction, type BagActionState } from "@/app/bag-actions";
-import {
-  BAG_SHIFT_OPTIONS,
-  BAG_STATUS_OPTIONS,
-  BAG_VEHICLE_OPTIONS,
-  BAG_WEEKDAY_OPTIONS,
-} from "@/lib/bag-config";
+import { BAG_SHIFT_OPTIONS, BAG_VEHICLE_OPTIONS, BAG_WEEKDAY_OPTIONS } from "@/lib/bag-config";
 
 const initialState: BagActionState = {
   status: "idle",
@@ -31,12 +26,17 @@ type BagCourierFormProps = {
     full_name: string;
     role: string;
   }>;
+  statuses: Array<{
+    slug: string;
+    label: string;
+  }>;
 };
 
-export function BagCourierForm({ cities, regions, operators }: BagCourierFormProps) {
+export function BagCourierForm({ cities, regions, operators, statuses }: BagCourierFormProps) {
   const [state, formAction] = useActionState(createBagCourierAction, initialState);
   const formRef = useRef<HTMLFormElement>(null);
   const initialCityId = cities[0]?.id || "";
+  const initialStatus = statuses[0]?.slug || "";
   const [selectedCityId, setSelectedCityId] = useState(initialCityId);
 
   const filteredRegions = useMemo(
@@ -132,9 +132,9 @@ export function BagCourierForm({ cities, regions, operators }: BagCourierFormPro
           ))}
         </select>
 
-        <select className="select-input" name="bag_status" required defaultValue="chamar_para_pegar_bag">
-          {BAG_STATUS_OPTIONS.map((status) => (
-            <option key={status.value} value={status.value}>
+        <select className="select-input" name="bag_status" required defaultValue={initialStatus}>
+          {statuses.map((status) => (
+            <option key={status.slug} value={status.slug}>
               {status.label}
             </option>
           ))}

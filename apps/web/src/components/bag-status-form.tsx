@@ -1,12 +1,16 @@
 import { updateBagCourierStatus } from "@/app/bag-actions";
-import { BAG_STATUS_OPTIONS, type BagStatus } from "@/lib/bag-config";
+import { type BagStatus } from "@/lib/bag-config";
 
 type BagStatusFormProps = {
   id: string;
   currentStatus: BagStatus;
+  statuses: Array<{
+    slug: string;
+    label: string;
+  }>;
 };
 
-export function BagStatusForm({ id, currentStatus }: BagStatusFormProps) {
+export function BagStatusForm({ id, currentStatus, statuses }: BagStatusFormProps) {
   return (
     <form action={updateBagCourierStatus} className="status-form">
       <input type="hidden" name="id" value={id} />
@@ -16,8 +20,8 @@ export function BagStatusForm({ id, currentStatus }: BagStatusFormProps) {
         aria-label="Atualizar status do BAG"
         className="select-input"
       >
-        {BAG_STATUS_OPTIONS.map((option) => (
-          <option key={option.value} value={option.value}>
+        {statuses.map((option) => (
+          <option key={option.slug} value={option.slug}>
             {option.label}
           </option>
         ))}

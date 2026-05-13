@@ -7,7 +7,6 @@ import { BagStatusForm } from "@/components/bag-status-form";
 import { SummaryCard } from "@/components/summary-card";
 import {
   BAG_SHIFT_LABELS,
-  BAG_STATUS_LABELS,
   BAG_WEEKDAY_LABELS,
   BAG_VEHICLE_LABELS,
   type BagShift,
@@ -39,6 +38,12 @@ type TenantOperatorView = {
   id: string;
   full_name: string;
   role: string;
+};
+
+type TenantBagStatusView = {
+  id: string;
+  slug: string;
+  label: string;
 };
 
 type BagCourierView = {
@@ -152,6 +157,31 @@ async function getTenantOperators(tenantId: string): Promise<TenantOperatorView[
   });
 }
 
+async function getTenantBagStatuses(
+  tenantId: string,
+): Promise<{ foundationReady: boolean; data: TenantBagStatusView[] }> {
+  const { data, error } = await supabaseServer
+    .from("tenant_bag_statuses")
+    .select("id,slug,label")
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true })
+    .order("label", { ascending: true });
+
+  if (error) {
+    if (isCompanyAccessSchemaMissing(error)) {
+      return { foundationReady: false, data: [] };
+    }
+
+    throw new Error(error.message);
+  }
+
+  return {
+    foundationReady: true,
+    data: data || [],
+  };
+}
+
 async function getBagCouriers(
   tenantId: string,
 ): Promise<{ foundationReady: boolean; data: BagCourierView[] }> {
@@ -252,16 +282,23 @@ export default async function InformacoesBagPage() {
   }
 
   const tenantId = currentUser.current_tenant.id;
-  const [citiesResult, regionsResult, operators, couriersResult] = await Promise.all([
+  const [citiesResult, regionsResult, operators, couriersResult, bagStatusesResult] = await Promise.all([
     getTenantCities(tenantId),
     getTenantRegions(tenantId),
     getTenantOperators(tenantId),
     getBagCouriers(tenantId),
+    getTenantBagStatuses(tenantId),
   ]);
 
   const foundationReady =
-    citiesResult.foundationReady && regionsResult.foundationReady && couriersResult.foundationReady;
+    citiesResult.foundationReady &&
+    regionsResult.foundationReady &&
+    couriersResult.foundationReady &&
+    bagStatusesResult.foundationReady;
   const couriers = couriersResult.data;
+  const bagStatusLabels = Object.fromEntries(
+    bagStatusesResult.data.map((status) => [status.slug, status.label]),
+  ) as Record<string, string>;
 
   return (
     <AppShell
@@ -286,18 +323,13 @@ export default async function InformacoesBagPage() {
         <>
           <section className="summary-grid">
             <SummaryCard title="Entregadores" value={couriers.length} />
-            <SummaryCard
-              title="Com BAG"
-              value={couriers.filter((item) => item.bag_status === "bag_com_entregador").length}
-            />
-            <SummaryCard
-              title="Sem BAG"
-              value={couriers.filter((item) => item.bag_status === "chamar_para_pegar_bag").length}
-            />
-            <SummaryCard
-              title="Desvinculados"
-              value={couriers.filter((item) => item.bag_status === "desvinculado").length}
-            />
+            {bagStatusesResult.data.map((status) => (
+              <SummaryCard
+                key={status.id}
+                title={status.label}
+                value={couriers.filter((item) => item.bag_status === status.slug).length}
+              />
+            ))}
           </section>
 
           {citiesResult.data.length === 0 ? (
@@ -331,6 +363,23 @@ export default async function InformacoesBagPage() {
             </section>
           ) : null}
 
+          {bagStatusesResult.data.length === 0 ? (
+            <section className="panel">
+              <div className="panel-header">
+                <div>
+                  <h2>Cadastre pelo menos um status BAG</h2>
+                  <p>
+                    O entregador precisa receber um status BAG da propria empresa antes de ser salvo
+                    no banco.
+                  </p>
+                </div>
+                <Link href="/perfil-empresa" className="secondary-button link-button">
+                  Abrir Perfil da empresa
+                </Link>
+              </div>
+            </section>
+          ) : null}
+
           {operators.length === 0 ? (
             <section className="panel">
               <div className="panel-header">
@@ -342,7 +391,10 @@ export default async function InformacoesBagPage() {
             </section>
           ) : null}
 
-          {citiesResult.data.length > 0 && regionsResult.data.length > 0 && operators.length > 0 ? (
+          {citiesResult.data.length > 0 &&
+          regionsResult.data.length > 0 &&
+          operators.length > 0 &&
+          bagStatusesResult.data.length > 0 ? (
             <section className="panel">
               <div className="panel-header">
                 <div>
@@ -354,6 +406,7 @@ export default async function InformacoesBagPage() {
                 cities={citiesResult.data}
                 regions={regionsResult.data}
                 operators={operators}
+                statuses={bagStatusesResult.data}
               />
             </section>
           ) : null}
@@ -398,8 +451,14 @@ export default async function InformacoesBagPage() {
                       ) : null}
                     </div>
                     <div className="user-card-meta">
-                      <span className="day-chip">{BAG_STATUS_LABELS[courier.bag_status]}</span>
-                      <BagStatusForm id={courier.id} currentStatus={courier.bag_status} />
+                      <span className="day-chip">
+                        {bagStatusLabels[courier.bag_status] || courier.bag_status}
+                      </span>
+                      <BagStatusForm
+                        id={courier.id}
+                        currentStatus={courier.bag_status}
+                        statuses={bagStatusesResult.data}
+                      />
                     </div>
                   </article>
                 ))
