@@ -53,116 +53,126 @@ export function BagCourierForm({ cities, regions, operators, statuses }: BagCour
 
   return (
     <form ref={formRef} action={formAction} className="hierarchy-form">
-      <div className="manual-form-grid user-form-grid">
-        <input
-          className="text-input"
-          type="text"
-          name="partner_delivery_id"
-          placeholder="ID do entregador parceiro"
-          required
-        />
+      <div className="access-grid">
+        <div className="access-panel">
+          <h3>1. Dados do entregador</h3>
+          <p>Preencha primeiro as informacoes principais do cadastro.</p>
 
-        <input
-          className="text-input"
-          type="text"
-          name="full_name"
-          placeholder="Nome do entregador parceiro"
-          required
-        />
+          <div className="manual-form-grid hierarchy-form-grid">
+            <input
+              className="text-input"
+              type="text"
+              name="partner_delivery_id"
+              placeholder="ID do entregador parceiro"
+              required
+            />
 
-        <input
-          className="text-input"
-          type="text"
-          name="phone_number"
-          inputMode="numeric"
-          placeholder="Numero de telefone"
-          required
-        />
+            <input
+              className="text-input"
+              type="text"
+              name="full_name"
+              placeholder="Nome do entregador parceiro"
+              required
+            />
 
-        <input
-          className="text-input"
-          type="url"
-          name="whatsapp_web_link"
-          placeholder="Link do WhatsApp Web"
-        />
+            <input
+              className="text-input"
+              type="text"
+              name="phone_number"
+              inputMode="numeric"
+              placeholder="Numero de telefone"
+              required
+            />
+          </div>
 
-        <input
-          className="text-input"
-          type="text"
-          name="identity_number"
-          placeholder="Numero de identidade"
-        />
+          <div className="manual-form-grid hierarchy-form-grid">
+            <input
+              className="text-input"
+              type="url"
+              name="whatsapp_web_link"
+              placeholder="Link do WhatsApp Web"
+            />
 
-        <select
-          className="select-input"
-          name="city_id"
-          value={selectedCityId}
-          onChange={(event) => setSelectedCityId(event.target.value)}
-          required
-        >
-          <option value="" disabled>
-            Escolha a cidade
-          </option>
-          {cities.map((city) => (
-            <option key={city.id} value={city.id}>
-              {city.name}
-            </option>
-          ))}
-        </select>
+            <input
+              className="text-input"
+              type="text"
+              name="identity_number"
+              placeholder="Numero de identidade"
+            />
 
-        <select className="select-input" name="delivery_vehicle" required defaultValue="">
-          <option value="" disabled>
-            Veiculo de entrega
-          </option>
-          {BAG_VEHICLE_OPTIONS.map((vehicle) => (
-            <option key={vehicle.value} value={vehicle.value}>
-              {vehicle.label}
-            </option>
-          ))}
-        </select>
+            <select
+              className="select-input"
+              name="city_id"
+              value={selectedCityId}
+              onChange={(event) => setSelectedCityId(event.target.value)}
+              required
+            >
+              <option value="" disabled>
+                Escolha a cidade
+              </option>
+              {cities.map((city) => (
+                <option key={city.id} value={city.id}>
+                  {city.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
 
-        <select className="select-input" name="operator_user_id" required defaultValue="">
-          <option value="" disabled>
-            Operador responsavel
-          </option>
-          {operators.map((operator) => (
-            <option key={operator.id} value={operator.id}>
-              {operator.full_name} · {operator.role}
-            </option>
-          ))}
-        </select>
+        <div className="access-panel">
+          <h3>2. Configuracao operacional</h3>
+          <p>Defina quem cadastrou, qual o status da BAG e como esse entregador vai operar.</p>
 
-        <select className="select-input" name="bag_status" required defaultValue={initialStatus}>
-          {statuses.map((status) => (
-            <option key={status.slug} value={status.slug}>
-              {status.label}
-            </option>
-          ))}
-        </select>
+          <div className="manual-form-grid hierarchy-form-grid">
+            <select className="select-input" name="operator_user_id" required defaultValue="">
+              <option value="" disabled>
+                Operador responsavel
+              </option>
+              {operators.map((operator) => (
+                <option key={operator.id} value={operator.id}>
+                  {operator.full_name} · {operator.role}
+                </option>
+              ))}
+            </select>
 
-        <label className="checkbox-card">
-          <input type="checkbox" name="joined_telegram_group" />
-          <span>Entrou no grupo do Telegram?</span>
-        </label>
+            <select className="select-input" name="bag_status" required defaultValue={initialStatus}>
+              {statuses.map((status) => (
+                <option key={status.slug} value={status.slug}>
+                  {status.label}
+                </option>
+              ))}
+            </select>
 
-        <textarea
-          className="text-input"
-          name="observation"
-          placeholder="Observacao"
-          rows={3}
-        />
+            <select className="select-input" name="delivery_vehicle" required defaultValue="">
+              <option value="" disabled>
+                Veiculo de entrega
+              </option>
+              {BAG_VEHICLE_OPTIONS.map((vehicle) => (
+                <option key={vehicle.value} value={vehicle.value}>
+                  {vehicle.label}
+                </option>
+              ))}
+            </select>
+          </div>
 
-        <div className="manual-form-actions">
-          <button type="submit" className="primary-button">
-            Adicionar novo entregador
-          </button>
+          <label className="checkbox-card">
+            <input type="checkbox" name="joined_telegram_group" />
+            <span>Entrou no grupo do Telegram?</span>
+          </label>
+
+          <textarea
+            className="text-input"
+            name="observation"
+            placeholder="Observacao"
+            rows={4}
+          />
         </div>
       </div>
 
       <div className="access-grid">
         <div className="access-panel">
-          <h3>Hot Zones desejadas</h3>
-          <p>As Hot Zones ficam vinculadas a cidade escolhida acima.</p>
+          <h3>3. Hot Zones desejadas</h3>
+          <p>Escolha as Hot Zones da cidade selecionada para esse entregador.</p>
           <div className="access-checkbox-grid">
             {filteredRegions.length > 0 ? (
               filteredRegions.map((region) => (
@@ -184,7 +194,7 @@ export function BagCourierForm({ cities, regions, operators, statuses }: BagCour
         </div>
 
         <div className="access-panel">
-          <h3>Quais turnos</h3>
+          <h3>4. Turnos</h3>
           <p>Marque todos os turnos que o entregador deseja operar.</p>
           <div className="access-checkbox-grid">
             {BAG_SHIFT_OPTIONS.map((shift) => (
@@ -200,7 +210,7 @@ export function BagCourierForm({ cities, regions, operators, statuses }: BagCour
       </div>
 
       <div className="access-panel">
-        <h3>Quais dias da semana</h3>
+        <h3>5. Dias da semana</h3>
         <p>Defina em quais dias o entregador gostaria de atuar.</p>
         <div className="access-checkbox-grid">
           {BAG_WEEKDAY_OPTIONS.map((weekday) => (
@@ -211,6 +221,16 @@ export function BagCourierForm({ cities, regions, operators, statuses }: BagCour
               </span>
             </label>
           ))}
+        </div>
+      </div>
+
+      <div className="access-panel">
+        <h3>6. Finalizar cadastro</h3>
+        <p>Revise os dados preenchidos acima e confirme o cadastro do entregador.</p>
+        <div className="manual-form-actions">
+          <button type="submit" className="primary-button">
+            Salvar entregador
+          </button>
         </div>
       </div>
 
