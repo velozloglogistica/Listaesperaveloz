@@ -387,6 +387,17 @@ select {
   gap: 16px;
 }
 
+.dashboard-date-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.dashboard-date-input {
+  min-width: 170px;
+}
+
 .dashboard-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
@@ -559,6 +570,16 @@ select {
   margin-top: 10px;
   color: var(--muted);
   font-size: 11px;
+}
+
+.trend-values {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .metric-trend-grid {
@@ -1165,6 +1186,10 @@ select {
   .trend-hero {
     grid-template-columns: 1fr;
   }
+
+  .dashboard-date-toolbar {
+    width: 100%;
+  }
 }
 
 @media (max-width: 720px) {
@@ -1209,7 +1234,8 @@ select {
   .filters-actions,
   .status-form,
   .manual-form-actions,
-  .courier-toolbar {
+  .courier-toolbar,
+  .dashboard-date-toolbar {
     flex-direction: column;
     align-items: stretch;
   }
@@ -1219,6 +1245,10 @@ select {
   }
 
   .courier-filter-select {
+    min-width: 100%;
+  }
+
+  .dashboard-date-input {
     min-width: 100%;
   }
 
