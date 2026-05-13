@@ -342,7 +342,7 @@ select {
 
 .courier-toolbar-grid {
   display: grid;
-  grid-template-columns: minmax(260px, 1.5fr) repeat(3, minmax(180px, 1fr)) auto auto;
+  grid-template-columns: minmax(260px, 1.4fr) repeat(5, minmax(160px, 1fr)) auto auto;
   gap: 12px;
   align-items: end;
 }

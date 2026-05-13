@@ -191,6 +191,41 @@ const RANKING_ORDER_LABELS: Record<RankingOrder, string> = {
   mais_parado: "Mais parado primeiro",
 };
 
+const SUPABASE_PAGE_SIZE = 1000;
+
+async function fetchAllTenantRows<T>(
+  table: string,
+  columns: string,
+  tenantId: string,
+): Promise<T[]> {
+  const rows: T[] = [];
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await supabaseServer
+      .from(table)
+      .select(columns)
+      .eq("tenant_id", tenantId)
+      .order("data", { ascending: false })
+      .range(from, from + SUPABASE_PAGE_SIZE - 1);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const batch = (data || []) as T[];
+    rows.push(...batch);
+
+    if (batch.length < SUPABASE_PAGE_SIZE) {
+      break;
+    }
+
+    from += SUPABASE_PAGE_SIZE;
+  }
+
+  return rows;
+}
+
 async function getTenantCities(
   tenantId: string,
 ): Promise<{ foundationReady: boolean; data: TenantCityView[] }> {
@@ -310,35 +345,19 @@ async function getTenantBagStatuses(
 }
 
 async function getDailyPerformanceRows(tenantId: string): Promise<DailyPerformanceRow[]> {
-  const { data, error } = await supabaseServer
-    .from("performance_por_entregador_diario")
-    .select(
-      "data,id_entregador,cpf_entregador,nome_entregador,numero_telefone,cidade,pedidos_finalizados,tsh,tsh_critico,ar,caa,overtime",
-    )
-    .eq("tenant_id", tenantId)
-    .order("data", { ascending: false });
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return (data || []) as DailyPerformanceRow[];
+  return fetchAllTenantRows<DailyPerformanceRow>(
+    "performance_por_entregador_diario",
+    "data,id_entregador,cpf_entregador,nome_entregador,numero_telefone,cidade,pedidos_finalizados,tsh,tsh_critico,ar,caa,overtime",
+    tenantId,
+  );
 }
 
 async function getShiftPerformanceRows(tenantId: string): Promise<ShiftPerformanceRow[]> {
-  const { data, error } = await supabaseServer
-    .from("performance_por_turno_diario")
-    .select(
-      "data,periodo_turno,hot_zone,id_entregador,cpf_entregador,nome_entregador,numero_telefone,cidade,pedidos_finalizados,horas_reais_conectado_horarios,duracao_total_horarios_agendados,tsh,ar,caa,overtime",
-    )
-    .eq("tenant_id", tenantId)
-    .order("data", { ascending: false });
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return (data || []) as ShiftPerformanceRow[];
+  return fetchAllTenantRows<ShiftPerformanceRow>(
+    "performance_por_turno_diario",
+    "data,periodo_turno,hot_zone,id_entregador,cpf_entregador,nome_entregador,numero_telefone,cidade,pedidos_finalizados,horas_reais_conectado_horarios,duracao_total_horarios_agendados,tsh,ar,caa,overtime",
+    tenantId,
+  );
 }
 
 async function getBagCouriers(
@@ -1158,6 +1177,7 @@ type InformacoesBagPageProps = {
   searchParams?: Promise<{
     busca?: string | string[];
     situacao?: string | string[];
+    status_bag?: string | string[];
     hotzone?: string | string[];
     turno?: string | string[];
     ordenacao?: string | string[];
@@ -1202,6 +1222,10 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
     typeof resolvedSearchParams.situacao === "string"
       ? resolvedSearchParams.situacao
       : resolvedSearchParams.situacao?.[0] || "todos";
+  const rawBagStatus =
+    typeof resolvedSearchParams.status_bag === "string"
+      ? resolvedSearchParams.status_bag
+      : resolvedSearchParams.status_bag?.[0] || "";
   const rawHotZone =
     typeof resolvedSearchParams.hotzone === "string"
       ? resolvedSearchParams.hotzone
@@ -1227,6 +1251,9 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
   )
     ? (rawOperationalFilter as OperationalFilter)
     : "todos";
+  const selectedBagStatus = bagStatusesResult.data.some((status) => status.slug === rawBagStatus)
+    ? rawBagStatus
+    : "";
   const selectedTurno = (Object.keys(BAG_SHIFT_LABELS) as BagShift[]).includes(rawTurno as BagShift)
     ? (rawTurno as BagShift)
     : "";
@@ -1358,9 +1385,11 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
     const matchesContextFilters =
       (!hotZoneFilterActive || courier.matchesSelectedHotZone) &&
       (!turnoFilterActive || courier.matchesSelectedTurno);
+    const matchesBagStatus = !selectedBagStatus || courier.bag_status === selectedBagStatus;
 
     return (
       matchesContextFilters &&
+      matchesBagStatus &&
       matchesOperationalFilter(courier, operationalFilter) &&
       matchesCourierSearch(courier, searchTerm, bagStatusLabels)
     );
@@ -1413,6 +1442,10 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
   const dashboardAttentionCount = dashboardCouriersWithInsights.filter(
     (item) => item.tier === "atencao" || item.tier === "parado",
   ).length;
+  const bagStatusSummary = bagStatusesResult.data.map((status) => ({
+    ...status,
+    count: couriersWithInsights.filter((courier) => courier.bag_status === status.slug).length,
+  }));
   const activityTrend = buildDistinctCourierTrend(dashboardTrendBuckets, dashboardDailyRows, dashboardShiftRows);
   const tshTrend = buildMetricTrend(dashboardTrendBuckets, dashboardDailyRows, dashboardShiftRows, "tsh");
   const arTrend = buildMetricTrend(dashboardTrendBuckets, dashboardDailyRows, dashboardShiftRows, "ar");
@@ -1453,6 +1486,7 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
                 </div>
                 <form action="/informacoes-bag" method="get" className="dashboard-date-toolbar">
                   <input type="hidden" name="busca" value={rawSearch} />
+                  <input type="hidden" name="status_bag" value={selectedBagStatus} />
                   <input type="hidden" name="hotzone" value={selectedHotZone} />
                   <input type="hidden" name="turno" value={selectedTurno} />
                   <input type="hidden" name="situacao" value={operationalFilter} />
@@ -1523,6 +1557,14 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
                       : "Ainda nao ha candidatos fortes o suficiente para sugerir cobertura automatica."}
                   </p>
                 </article>
+              </div>
+
+              <div className="status-chip-grid">
+                {bagStatusSummary.map((status) => (
+                  <span key={status.id} className="status-chip">
+                    {status.label}: {status.count}
+                  </span>
+                ))}
               </div>
             </section>
 
@@ -1669,6 +1711,7 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
                     ? `Mostrando ${filteredCouriers.length} de ${couriersWithInsights.length} entregadores para a busca atual.`
                     : [
                         OPERATIONAL_FILTER_LABELS[operationalFilter],
+                        selectedBagStatus ? `Status BAG: ${bagStatusLabels[selectedBagStatus] || selectedBagStatus}` : "",
                         selectedHotZone ? `Hot Zone: ${selectedHotZone}` : "",
                         selectedTurno ? `Turno: ${BAG_SHIFT_LABELS[selectedTurno as BagShift]}` : "",
                       ]
@@ -1700,6 +1743,18 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
                   className="text-input courier-search-input"
                   placeholder="Pesquisar por nome, ID, telefone, CPF, status, Hot Zone ou operador"
                 />
+                <select
+                  name="status_bag"
+                  defaultValue={selectedBagStatus}
+                  className="select-input courier-filter-select"
+                >
+                  <option value="">Todos os status BAG</option>
+                  {bagStatusesResult.data.map((status) => (
+                    <option key={status.id} value={status.slug}>
+                      {status.label}
+                    </option>
+                  ))}
+                </select>
                 <select
                   name="hotzone"
                   defaultValue={selectedHotZone}
@@ -1749,7 +1804,12 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
                 <button type="submit" className="secondary-button">
                   Filtrar
                 </button>
-                {rawSearch || operationalFilter !== "todos" || selectedHotZone || selectedTurno || rankingOrder !== "melhor_pior" ? (
+                {rawSearch ||
+                selectedBagStatus ||
+                operationalFilter !== "todos" ||
+                selectedHotZone ||
+                selectedTurno ||
+                rankingOrder !== "melhor_pior" ? (
                   <Link href="/informacoes-bag" className="link-button">
                     Limpar
                   </Link>
