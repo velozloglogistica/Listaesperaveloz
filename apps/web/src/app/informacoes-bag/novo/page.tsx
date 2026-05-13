@@ -94,12 +94,11 @@ async function getTenantRegions(
 
 async function getTenantOperators(tenantId: string): Promise<TenantOperatorView[]> {
   const { data, error } = await supabaseServer
-    .from("app_users")
-    .select("id,full_name,role")
+    .from("tenant_memberships")
+    .select("user_id,role,app_users!tenant_memberships_user_id_fkey!inner(full_name)")
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
-    .in("role", ["owner", "area"])
-    .order("full_name", { ascending: true });
+    .order("created_at", { ascending: true });
 
   if (error) {
     if (isCompanyAccessSchemaMissing(error)) {
@@ -109,7 +108,21 @@ async function getTenantOperators(tenantId: string): Promise<TenantOperatorView[
     throw new Error(error.message);
   }
 
-  return data || [];
+  return (data || []).flatMap((item) => {
+    const appUser = Array.isArray(item.app_users) ? item.app_users[0] : item.app_users;
+
+    if (!appUser?.full_name) {
+      return [];
+    }
+
+    return [
+      {
+        id: item.user_id,
+        full_name: appUser.full_name,
+        role: item.role,
+      },
+    ];
+  });
 }
 
 async function getTenantBagStatuses(
