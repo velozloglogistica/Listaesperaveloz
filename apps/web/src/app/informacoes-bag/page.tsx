@@ -457,8 +457,25 @@ function parseNumber(value: unknown) {
   return Number.isFinite(number) ? number : null;
 }
 
+function parseLocalizedMetric(value: unknown) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const withoutPercent = value.replace(/%/g, "").trim();
+  const sanitized = withoutPercent.includes(",")
+    ? withoutPercent.replace(/\./g, "").replace(",", ".")
+    : withoutPercent;
+  const parsed = Number(sanitized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function normalizePercentMetric(value: unknown) {
-  const parsed = parseNumber(value);
+  const parsed = parseLocalizedMetric(value);
 
   if (parsed === null) {
     return null;
@@ -552,6 +569,16 @@ function getLatestPerformanceDate(rows: Array<{ data: string }>) {
 
     return latestDate;
   }, null);
+}
+
+function getDistinctPerformanceCourierCount(
+  rows: Array<{ id_entregador: string | null }>,
+) {
+  return new Set(
+    rows
+      .map((row) => normalizeCodeValue(row.id_entregador))
+      .filter(Boolean),
+  ).size;
 }
 
 function getMostFrequentLabel(values: string[]) {
@@ -654,20 +681,30 @@ function buildCourierPerformanceSummary(
 ): CourierPerformanceSummary {
   const last15Start = latestPerformanceDate ? subtractDaysFromIsoDate(latestPerformanceDate, 14) : null;
   const last30Start = latestPerformanceDate ? subtractDaysFromIsoDate(latestPerformanceDate, 29) : null;
+  const activityDates = Array.from(new Set([...dailyRows.map((row) => row.data), ...shiftRows.map((row) => row.data)]));
   const lastRunDate =
     getLatestPerformanceDate(dailyRows) ||
     getLatestPerformanceDate(shiftRows.map((row) => ({ data: row.data }))) ||
     null;
   const dailyRowsLast15 = last15Start ? dailyRows.filter((row) => row.data >= last15Start) : [];
   const dailyRowsLast30 = last30Start ? dailyRows.filter((row) => row.data >= last30Start) : [];
+  const shiftRowsLast15 = last15Start ? shiftRows.filter((row) => row.data >= last15Start) : [];
   const shiftRowsLast30 = last30Start ? shiftRows.filter((row) => row.data >= last30Start) : [];
-  const activeDaysLast30 = new Set(dailyRowsLast30.map((row) => row.data)).size;
-  const totalOrdersLast30 = sumNumbers(dailyRowsLast30.map((row) => parseNumber(row.pedidos_finalizados)));
-  const avgTsh = averageNumbers(dailyRowsLast30.map((row) => normalizePercentMetric(row.tsh)));
-  const avgTshCritical = averageNumbers(dailyRowsLast30.map((row) => normalizePercentMetric(row.tsh_critico)));
-  const avgAr = averageNumbers(dailyRowsLast30.map((row) => normalizePercentMetric(row.ar)));
-  const avgCaa = averageNumbers(dailyRowsLast30.map((row) => normalizePercentMetric(row.caa)));
-  const avgOvertime = averageNumbers(dailyRowsLast30.map((row) => normalizePercentMetric(row.overtime)));
+  const metricRowsLast30 = dailyRowsLast30.length > 0 ? dailyRowsLast30 : shiftRowsLast30;
+  const activeDaysLast30 = new Set([
+    ...dailyRowsLast30.map((row) => row.data),
+    ...shiftRowsLast30.map((row) => row.data),
+  ]).size;
+  const totalOrdersLast30 = sumNumbers(metricRowsLast30.map((row) => parseNumber(row.pedidos_finalizados)));
+  const avgTsh = averageNumbers(metricRowsLast30.map((row) => normalizePercentMetric(row.tsh)));
+  const avgTshCritical = averageNumbers(
+    dailyRowsLast30.length > 0
+      ? dailyRowsLast30.map((row) => normalizePercentMetric(row.tsh_critico))
+      : [],
+  );
+  const avgAr = averageNumbers(metricRowsLast30.map((row) => normalizePercentMetric(row.ar)));
+  const avgCaa = averageNumbers(metricRowsLast30.map((row) => normalizePercentMetric(row.caa)));
+  const avgOvertime = averageNumbers(metricRowsLast30.map((row) => normalizePercentMetric(row.overtime)));
   const score = getPerformanceScore({ avgTsh, avgAr, avgCaa, avgOvertime });
   const dominantHotZone = getMostFrequentLabel(
     shiftRowsLast30.map((row) => row.hot_zone || "").filter(Boolean),
@@ -677,9 +714,9 @@ function buildCourierPerformanceSummary(
   );
   const baseSummary = {
     hasPerformanceHistory: dailyRows.length > 0 || shiftRows.length > 0,
-    hasRunOnLatestDate: Boolean(latestPerformanceDate && dailyRows.some((row) => row.data === latestPerformanceDate)),
-    hasRunLast15Days: dailyRowsLast15.length > 0,
-    hasRunLast30Days: dailyRowsLast30.length > 0,
+    hasRunOnLatestDate: Boolean(latestPerformanceDate && activityDates.includes(latestPerformanceDate)),
+    hasRunLast15Days: dailyRowsLast15.length > 0 || shiftRowsLast15.length > 0,
+    hasRunLast30Days: dailyRowsLast30.length > 0 || shiftRowsLast30.length > 0,
     lastRunDate,
     activeDaysLast30,
     totalOrdersLast30,
@@ -829,7 +866,23 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
     ? (rawOperationalFilter as OperationalFilter)
     : "todos";
   const searchTerm = normalizeSearchValue(rawSearch);
-  const latestPerformanceDate = getLatestPerformanceDate(dailyPerformanceRows);
+  const latestPerformanceDate = getLatestPerformanceDate([
+    ...dailyPerformanceRows,
+    ...shiftPerformanceRows.map((row) => ({ data: row.data })),
+  ]);
+  const last15Start = latestPerformanceDate ? subtractDaysFromIsoDate(latestPerformanceDate, 14) : null;
+  const performanceRowsOnLatestDate = latestPerformanceDate
+    ? [
+        ...dailyPerformanceRows.filter((row) => row.data === latestPerformanceDate),
+        ...shiftPerformanceRows.filter((row) => row.data === latestPerformanceDate),
+      ]
+    : [];
+  const performanceRowsLast15Days = last15Start
+    ? [
+        ...dailyPerformanceRows.filter((row) => row.data >= last15Start),
+        ...shiftPerformanceRows.filter((row) => row.data >= last15Start),
+      ]
+    : [];
   const dailyPerformanceIndex = buildPerformanceIndex(dailyPerformanceRows);
   const shiftPerformanceIndex = buildPerformanceIndex(shiftPerformanceRows);
   const couriersWithInsights = couriers
@@ -886,8 +939,8 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
       matchesCourierSearch(courier, searchTerm, bagStatusLabels),
   );
   const totalRegisteredCouriers = couriersWithInsights.length;
-  const couriersRunningOnLatestDate = couriersWithInsights.filter((courier) => courier.performance.hasRunOnLatestDate).length;
-  const couriersRunningLast15Days = couriersWithInsights.filter((courier) => courier.performance.hasRunLast15Days).length;
+  const couriersRunningOnLatestDate = getDistinctPerformanceCourierCount(performanceRowsOnLatestDate);
+  const couriersRunningLast15Days = getDistinctPerformanceCourierCount(performanceRowsLast15Days);
   const couriersInactiveLast15Days = couriersWithInsights.filter((courier) => !courier.performance.hasRunLast15Days).length;
   const couriersInactiveLast30Days = couriersWithInsights.filter((courier) => !courier.performance.hasRunLast30Days).length;
   const couriersNeverRan = couriersWithInsights.filter((courier) => !courier.performance.hasPerformanceHistory).length;
