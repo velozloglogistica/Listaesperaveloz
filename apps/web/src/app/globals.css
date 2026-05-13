@@ -343,6 +343,10 @@ select {
   min-width: min(440px, 100%);
 }
 
+.courier-filter-select {
+  min-width: 240px;
+}
+
 .bag-create-disclosure {
   display: grid;
   gap: 16px;
@@ -374,6 +378,44 @@ select {
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid var(--border);
+}
+
+.courier-insights-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.courier-performance-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.courier-performance-stat {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fffef9;
+}
+
+.courier-performance-stat strong {
+  font-size: 12px;
+}
+
+.courier-performance-stat span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.courier-highlight {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--accent-soft);
 }
 
 .checkbox-card {
@@ -716,6 +758,31 @@ select {
   white-space: nowrap;
 }
 
+.day-chip-success {
+  background: #ecfdf3;
+  color: #166534;
+}
+
+.day-chip-info {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.day-chip-warning {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.day-chip-danger {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.day-chip-muted {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
 .request-card-top p,
 .request-note {
   margin: 4px 0 0;
@@ -929,6 +996,15 @@ select {
 
   .courier-search-input {
     min-width: 100%;
+  }
+
+  .courier-filter-select {
+    min-width: 100%;
+  }
+
+  .courier-insights-grid,
+  .courier-performance-grid {
+    grid-template-columns: 1fr;
   }
 
   .bag-create-summary {
