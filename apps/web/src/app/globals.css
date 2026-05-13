@@ -332,6 +332,50 @@ select {
   align-items: center;
 }
 
+.courier-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.courier-search-input {
+  min-width: min(440px, 100%);
+}
+
+.bag-create-disclosure {
+  display: grid;
+  gap: 16px;
+}
+
+.bag-create-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.bag-create-summary::-webkit-details-marker {
+  display: none;
+}
+
+.bag-create-summary h2,
+.bag-create-summary p {
+  margin: 0;
+}
+
+.bag-create-summary p {
+  color: var(--muted);
+}
+
+.bag-create-content {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
 .checkbox-card {
   display: flex;
   align-items: center;
@@ -877,7 +921,17 @@ select {
 
   .filters-actions,
   .status-form,
-  .manual-form-actions {
+  .manual-form-actions,
+  .courier-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .courier-search-input {
+    min-width: 100%;
+  }
+
+  .bag-create-summary {
     flex-direction: column;
     align-items: stretch;
   }
