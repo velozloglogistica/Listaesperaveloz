@@ -654,6 +654,22 @@ function buildDateRange(latestDate: string | null, days: number) {
   );
 }
 
+function buildDateRangeBetween(startDate: string | null, endDate: string | null) {
+  if (!startDate || !endDate || startDate > endDate) {
+    return [];
+  }
+
+  const dates: string[] = [];
+  let currentDate = startDate;
+
+  while (currentDate <= endDate) {
+    dates.push(currentDate);
+    currentDate = subtractDaysFromIsoDate(currentDate, -1);
+  }
+
+  return dates;
+}
+
 function getTrendValueMap(rows: DailyPerformanceRow[] | ShiftPerformanceRow[], metric: keyof Pick<DailyPerformanceRow & ShiftPerformanceRow, "tsh" | "ar" | "caa" | "overtime">) {
   return rows.reduce<Record<string, number[]>>((acc, row) => {
     const value = normalizePercentMetric(row[metric]);
@@ -737,6 +753,19 @@ function renderSparkline(points: TrendPoint[], className: string) {
     <svg viewBox="0 0 240 72" className={`sparkline ${className}`} preserveAspectRatio="none" aria-hidden="true">
       <path d={buildSparklinePath(points)} />
     </svg>
+  );
+}
+
+function renderTrendValues(
+  points: TrendPoint[],
+  formatter: (value: number) => string,
+) {
+  return (
+    <div className="trend-values">
+      {points.map((point) => (
+        <span key={point.date}>{formatter(point.value)}</span>
+      ))}
+    </div>
   );
 }
 
@@ -1055,6 +1084,8 @@ type InformacoesBagPageProps = {
     hotzone?: string | string[];
     turno?: string | string[];
     ordenacao?: string | string[];
+    data_inicio?: string | string[];
+    data_fim?: string | string[];
   }>;
 };
 
@@ -1106,6 +1137,14 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
     typeof resolvedSearchParams.ordenacao === "string"
       ? resolvedSearchParams.ordenacao
       : resolvedSearchParams.ordenacao?.[0] || "melhor_pior";
+  const rawDataInicio =
+    typeof resolvedSearchParams.data_inicio === "string"
+      ? resolvedSearchParams.data_inicio
+      : resolvedSearchParams.data_inicio?.[0] || "";
+  const rawDataFim =
+    typeof resolvedSearchParams.data_fim === "string"
+      ? resolvedSearchParams.data_fim
+      : resolvedSearchParams.data_fim?.[0] || "";
   const operationalFilter = (Object.keys(OPERATIONAL_FILTER_LABELS) as OperationalFilter[]).includes(
     rawOperationalFilter as OperationalFilter,
   )
@@ -1124,6 +1163,16 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
     ...dailyPerformanceRows,
     ...shiftPerformanceRows.map((row) => ({ data: row.data })),
   ]);
+  const defaultDashboardStart = latestPerformanceDate ? subtractDaysFromIsoDate(latestPerformanceDate, 13) : "";
+  const defaultDashboardEnd = latestPerformanceDate || "";
+  const selectedDashboardStart =
+    rawDataInicio && (!defaultDashboardEnd || rawDataInicio <= defaultDashboardEnd)
+      ? rawDataInicio
+      : defaultDashboardStart;
+  const selectedDashboardEnd =
+    rawDataFim && (!selectedDashboardStart || rawDataFim >= selectedDashboardStart)
+      ? rawDataFim
+      : defaultDashboardEnd;
   const availableHotZones = Array.from(
     new Set(
       [
@@ -1136,7 +1185,19 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
     (value) => normalizeSearchValue(value) === normalizeSearchValue(rawHotZone),
   ) || "";
   const last15Start = latestPerformanceDate ? subtractDaysFromIsoDate(latestPerformanceDate, 14) : null;
-  const recentDates = buildDateRange(latestPerformanceDate, 14);
+  const recentDates = buildDateRangeBetween(selectedDashboardStart, selectedDashboardEnd);
+  const dashboardDailyRows =
+    selectedDashboardStart && selectedDashboardEnd
+      ? dailyPerformanceRows.filter(
+          (row) => row.data >= selectedDashboardStart && row.data <= selectedDashboardEnd,
+        )
+      : dailyPerformanceRows;
+  const dashboardShiftRows =
+    selectedDashboardStart && selectedDashboardEnd
+      ? shiftPerformanceRows.filter(
+          (row) => row.data >= selectedDashboardStart && row.data <= selectedDashboardEnd,
+        )
+      : shiftPerformanceRows;
   const performanceRowsOnLatestDate = latestPerformanceDate
     ? [
         ...dailyPerformanceRows.filter((row) => row.data === latestPerformanceDate),
@@ -1231,15 +1292,45 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
   const highlightedCandidates = couriersWithInsights
     .filter((courier) => courier.performance.tier === "bom")
     .slice(0, 3);
-  const activityTrend = buildDistinctCourierTrend(recentDates, dailyPerformanceRows, shiftPerformanceRows);
-  const tshTrend = buildMetricTrend(recentDates, dailyPerformanceRows, shiftPerformanceRows, "tsh");
-  const arTrend = buildMetricTrend(recentDates, dailyPerformanceRows, shiftPerformanceRows, "ar");
-  const caaTrend = buildMetricTrend(recentDates, dailyPerformanceRows, shiftPerformanceRows, "caa");
-  const overtimeTrend = buildMetricTrend(recentDates, dailyPerformanceRows, shiftPerformanceRows, "overtime");
-  const bagStatusSummary = bagStatusesResult.data.map((status) => ({
-    ...status,
-    count: couriersWithInsights.filter((item) => item.bag_status === status.slug).length,
-  }));
+  const dashboardDailyPerformanceIndex = buildPerformanceIndex(dashboardDailyRows);
+  const dashboardShiftPerformanceIndex = buildPerformanceIndex(dashboardShiftRows);
+  const dashboardCouriersWithInsights = couriers.map((courier) => {
+    const matchedDailyRows = getMatchedPerformanceRows(
+      courier,
+      dashboardDailyPerformanceIndex,
+      (row) => [row.data, row.id_entregador || "", row.cpf_entregador || "", row.numero_telefone || ""].join("|"),
+    );
+    const matchedShiftRows = getMatchedPerformanceRows(
+      courier,
+      dashboardShiftPerformanceIndex,
+      (row) =>
+        [
+          row.data,
+          row.periodo_turno || "",
+          row.hot_zone || "",
+          row.id_entregador || "",
+          row.cpf_entregador || "",
+          row.numero_telefone || "",
+        ].join("|"),
+    );
+
+    return buildCourierPerformanceSummary(matchedDailyRows, matchedShiftRows, selectedDashboardEnd || latestPerformanceDate);
+  });
+  const dashboardCouriersRunningInRange = dashboardCouriersWithInsights.filter(
+    (item) => item.hasPerformanceHistory,
+  ).length;
+  const dashboardCouriersInactiveInRange = dashboardCouriersWithInsights.filter(
+    (item) => !item.hasPerformanceHistory,
+  ).length;
+  const dashboardGoodCandidates = dashboardCouriersWithInsights.filter((item) => item.tier === "bom").length;
+  const dashboardAttentionCount = dashboardCouriersWithInsights.filter(
+    (item) => item.tier === "atencao" || item.tier === "parado",
+  ).length;
+  const activityTrend = buildDistinctCourierTrend(recentDates, dashboardDailyRows, dashboardShiftRows);
+  const tshTrend = buildMetricTrend(recentDates, dashboardDailyRows, dashboardShiftRows, "tsh");
+  const arTrend = buildMetricTrend(recentDates, dashboardDailyRows, dashboardShiftRows, "ar");
+  const caaTrend = buildMetricTrend(recentDates, dashboardDailyRows, dashboardShiftRows, "caa");
+  const overtimeTrend = buildMetricTrend(recentDates, dashboardDailyRows, dashboardShiftRows, "overtime");
 
   return (
     <AppShell
@@ -1268,20 +1359,42 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
                 <div>
                   <h2>Visao da base</h2>
                   <p>
-                    {latestPerformanceDate
-                      ? `Comparativo da base cadastrada com a ultima leitura de ${formatDateLabel(latestPerformanceDate)}.`
+                    {selectedDashboardStart && selectedDashboardEnd
+                      ? `Leitura do periodo entre ${formatDateLabel(selectedDashboardStart)} e ${formatDateLabel(selectedDashboardEnd)}.`
                       : "Ainda nao existe leitura de performance para comparar a base."}
                   </p>
                 </div>
+                <form action="/informacoes-bag" method="get" className="dashboard-date-toolbar">
+                  <input type="hidden" name="busca" value={rawSearch} />
+                  <input type="hidden" name="hotzone" value={selectedHotZone} />
+                  <input type="hidden" name="turno" value={selectedTurno} />
+                  <input type="hidden" name="situacao" value={operationalFilter} />
+                  <input type="hidden" name="ordenacao" value={rankingOrder} />
+                  <input
+                    type="date"
+                    name="data_inicio"
+                    defaultValue={selectedDashboardStart}
+                    className="text-input dashboard-date-input"
+                  />
+                  <input
+                    type="date"
+                    name="data_fim"
+                    defaultValue={selectedDashboardEnd}
+                    className="text-input dashboard-date-input"
+                  />
+                  <button type="submit" className="secondary-button">
+                    Atualizar graficos
+                  </button>
+                </form>
               </div>
 
               <div className="comparison-bars">
                 {[
                   { label: "Cadastrados", value: totalRegisteredCouriers, tone: "neutral" },
-                  { label: "Ja rodaram alguma vez", value: couriersEverRan, tone: "success" },
-                  { label: "Rodaram 15 dias", value: couriersRunningLast15Days, tone: "info" },
-                  { label: "Sem rodar 30 dias", value: couriersInactiveLast30Days, tone: "warning" },
-                  { label: "Nunca rodaram", value: couriersNeverRan, tone: "danger" },
+                  { label: "Rodaram no periodo", value: dashboardCouriersRunningInRange, tone: "success" },
+                  { label: "Sem rodar no periodo", value: dashboardCouriersInactiveInRange, tone: "warning" },
+                  { label: "Bons candidatos", value: dashboardGoodCandidates, tone: "info" },
+                  { label: "Pedem atencao", value: dashboardAttentionCount, tone: "danger" },
                 ].map((item) => (
                   <div key={item.label} className="comparison-row">
                     <div className="comparison-row-top">
@@ -1305,7 +1418,7 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
                   <strong>Eficiencia da base</strong>
                   <p>
                     {totalRegisteredCouriers > 0
-                      ? `${Math.round((couriersRunningLast15Days / totalRegisteredCouriers) * 100)}% da base cadastrada rodou nos ultimos 15 dias.`
+                      ? `${Math.round((dashboardCouriersRunningInRange / totalRegisteredCouriers) * 100)}% da base cadastrada rodou no periodo selecionado.`
                       : "Sem base cadastrada para comparar."}
                   </p>
                 </article>
@@ -1324,21 +1437,13 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
                   </p>
                 </article>
               </div>
-
-              <div className="status-chip-grid">
-                {bagStatusSummary.map((status) => (
-                  <span key={status.id} className="status-chip">
-                    {status.label}: {status.count}
-                  </span>
-                ))}
-              </div>
             </section>
 
             <section className="panel">
               <div className="panel-header">
                 <div>
                   <h2>Atividade da base</h2>
-                  <p>Distinct de `id_entregador` por dia nos ultimos 14 dias.</p>
+                  <p>Entregadores por dia nos ultimos 14 dias</p>
                 </div>
               </div>
 
@@ -1352,6 +1457,7 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
                 </div>
                 {renderSparkline(activityTrend, "sparkline-activity")}
               </div>
+              {renderTrendValues(activityTrend, (value) => `${Math.round(value)}`)}
 
               <div className="trend-axis">
                 {activityTrend.map((point) => (
@@ -1401,6 +1507,7 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
                   <span className="metric-trend-subtitle">{metric.subtitle}</span>
                 </div>
                 {renderSparkline(metric.points, metric.className)}
+                {renderTrendValues(metric.points, (value) => `${value.toFixed(1)}%`)}
                 <div className="trend-axis">
                   {metric.points.map((point) => (
                     <span key={point.date}>{point.label}</span>
@@ -1483,6 +1590,8 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
                 </p>
               </div>
               <form action="/informacoes-bag" method="get" className="courier-toolbar">
+                <input type="hidden" name="data_inicio" value={selectedDashboardStart} />
+                <input type="hidden" name="data_fim" value={selectedDashboardEnd} />
                 <input
                   type="search"
                   name="busca"
