@@ -64,6 +64,108 @@ type BagCourierView = {
   regions: string[];
 };
 
+type DailyPerformanceRow = {
+  data: string;
+  id_entregador: string | null;
+  cpf_entregador: string | null;
+  nome_entregador: string | null;
+  numero_telefone: string | null;
+  cidade: string | null;
+  pedidos_finalizados: number | null;
+  tsh: number | null;
+  tsh_critico: number | null;
+  ar: number | null;
+  caa: number | null;
+  overtime: number | null;
+};
+
+type ShiftPerformanceRow = {
+  data: string;
+  periodo_turno: string | null;
+  hot_zone: string | null;
+  id_entregador: string | null;
+  cpf_entregador: string | null;
+  nome_entregador: string | null;
+  numero_telefone: string | null;
+  cidade: string | null;
+  pedidos_finalizados: number | null;
+  horas_reais_conectado_horarios: number | null;
+  duracao_total_horarios_agendados: number | null;
+  tsh: number | null;
+  ar: number | null;
+  caa: number | null;
+  overtime: number | null;
+};
+
+type PerformanceIndex<T> = {
+  byId: Map<string, T[]>;
+  byCpf: Map<string, T[]>;
+  byPhone: Map<string, T[]>;
+};
+
+type CourierPerformanceTier = "bom" | "regular" | "atencao" | "parado" | "sem_historico";
+
+type CourierPerformanceSummary = {
+  hasPerformanceHistory: boolean;
+  hasRunOnLatestDate: boolean;
+  hasRunLast15Days: boolean;
+  hasRunLast30Days: boolean;
+  lastRunDate: string | null;
+  activeDaysLast30: number;
+  totalOrdersLast30: number;
+  avgTsh: number | null;
+  avgTshCritical: number | null;
+  avgAr: number | null;
+  avgCaa: number | null;
+  avgOvertime: number | null;
+  score: number | null;
+  tier: CourierPerformanceTier;
+  dominantHotZone: string | null;
+  dominantShift: string | null;
+  recommendation: string | null;
+};
+
+type BagCourierInsightView = BagCourierView & {
+  performance: CourierPerformanceSummary;
+};
+
+type OperationalFilter =
+  | "todos"
+  | "ativos_hoje"
+  | "ativos_15d"
+  | "sem_15d"
+  | "sem_30d"
+  | "nunca_rodaram"
+  | "bons_candidatos"
+  | "atencao";
+
+const PERFORMANCE_TIER_LABELS: Record<CourierPerformanceTier, string> = {
+  bom: "Bom candidato",
+  regular: "Operacao estavel",
+  atencao: "Pedir atencao",
+  parado: "Parado",
+  sem_historico: "Sem historico",
+};
+
+const PERFORMANCE_TIER_CLASS_NAMES: Record<CourierPerformanceTier, string> = {
+  bom: "day-chip-success",
+  regular: "day-chip-info",
+  atencao: "day-chip-warning",
+  parado: "day-chip-danger",
+  sem_historico: "day-chip-muted",
+};
+
+const OPERATIONAL_FILTER_LABELS: Record<OperationalFilter, string> = {
+  todos: "Todos os entregadores",
+  ativos_hoje: "Rodaram no ultimo dia",
+  ativos_15d: "Rodaram nos ultimos 15 dias",
+  sem_15d: "Sem rodar 15 dias",
+  sem_30d: "Sem rodar 30 dias",
+  nunca_rodaram: "Nunca rodaram",
+  bons_candidatos: "Bons candidatos",
+  atencao: "Pedem atencao",
+};
+
 async function getTenantCities(
   tenantId: string,
 ): Promise<{ foundationReady: boolean; data: TenantCityView[] }> {
@@ -182,6 +284,38 @@ async function getTenantBagStatuses(
   };
 }
 
+async function getDailyPerformanceRows(tenantId: string): Promise<DailyPerformanceRow[]> {
+  const { data, error } = await supabaseServer
+    .from("performance_por_entregador_diario")
+    .select(
+      "data,id_entregador,cpf_entregador,nome_entregador,numero_telefone,cidade,pedidos_finalizados,tsh,tsh_critico,ar,caa,overtime",
+    )
+    .eq("tenant_id", tenantId)
+    .order("data", { ascending: false });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data || []) as DailyPerformanceRow[];
+}
+
+async function getShiftPerformanceRows(tenantId: string): Promise<ShiftPerformanceRow[]> {
+  const { data, error } = await supabaseServer
+    .from("performance_por_turno_diario")
+    .select(
+      "data,periodo_turno,hot_zone,id_entregador,cpf_entregador,nome_entregador,numero_telefone,cidade,pedidos_finalizados,horas_reais_conectado_horarios,duracao_total_horarios_agendados,tsh,ar,caa,overtime",
+    )
+    .eq("tenant_id", tenantId)
+    .order("data", { ascending: false });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data || []) as ShiftPerformanceRow[];
+}
+
 async function getBagCouriers(
   tenantId: string,
 ): Promise<{ foundationReady: boolean; data: BagCourierView[] }> {
@@ -291,8 +425,327 @@ function normalizeSearchValue(value: string | null | undefined) {
     .toLowerCase();
 }
 
-function matchesCourierSearch(
+function normalizeCodeValue(value: string | null | undefined) {
+  return normalizeSearchValue(value).replace(/\s+/g, "");
+}
+
+function normalizeDigits(value: string | null | undefined) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function formatDateLabel(value: string | null) {
+  if (!value) {
+    return "Sem historico";
+  }
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "UTC",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date(`${value}T00:00:00Z`));
+}
+
+function subtractDaysFromIsoDate(value: string, days: number) {
+  const date = new Date(`${value}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() - days);
+  return date.toISOString().slice(0, 10);
+}
+
+function parseNumber(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function normalizePercentMetric(value: unknown) {
+  const parsed = parseNumber(value);
+
+  if (parsed === null) {
+    return null;
+  }
+
+  const scaled = Math.abs(parsed) <= 1 ? parsed * 100 : parsed;
+  return Math.max(0, Math.min(100, scaled));
+}
+
+function averageNumbers(values: Array<number | null>) {
+  const validValues = values.filter((value): value is number => value !== null);
+
+  if (validValues.length === 0) {
+    return null;
+  }
+
+  const total = validValues.reduce((acc, value) => acc + value, 0);
+  return total / validValues.length;
+}
+
+function sumNumbers(values: Array<number | null>) {
+  return values.reduce<number>((acc, value) => acc + (value || 0), 0);
+}
+
+function buildPerformanceIndex<
+  T extends { id_entregador: string | null; cpf_entregador: string | null; numero_telefone: string | null },
+>(rows: T[]): PerformanceIndex<T> {
+  const index: PerformanceIndex<T> = {
+    byId: new Map<string, T[]>(),
+    byCpf: new Map<string, T[]>(),
+    byPhone: new Map<string, T[]>(),
+  };
+
+  for (const row of rows) {
+    const idKey = normalizeCodeValue(row.id_entregador);
+    const cpfKey = normalizeDigits(row.cpf_entregador);
+    const phoneKey = normalizeDigits(row.numero_telefone);
+
+    if (idKey) {
+      index.byId.set(idKey, [...(index.byId.get(idKey) || []), row]);
+    }
+
+    if (cpfKey) {
+      index.byCpf.set(cpfKey, [...(index.byCpf.get(cpfKey) || []), row]);
+    }
+
+    if (phoneKey) {
+      index.byPhone.set(phoneKey, [...(index.byPhone.get(phoneKey) || []), row]);
+    }
+  }
+
+  return index;
+}
+
+function getMatchedPerformanceRows<
+  T extends { id_entregador: string | null; cpf_entregador: string | null; numero_telefone: string | null },
+>(
   courier: BagCourierView,
+  index: PerformanceIndex<T>,
+  createRowKey: (row: T) => string,
+) {
+  const matchedRows = new Map<string, T>();
+  const courierId = normalizeCodeValue(courier.partner_delivery_id);
+  const courierCpf = normalizeDigits(courier.identity_number);
+  const courierPhone = normalizeDigits(courier.phone_number);
+
+  const sources = [
+    courierId ? index.byId.get(courierId) || [] : [],
+    courierCpf ? index.byCpf.get(courierCpf) || [] : [],
+    courierPhone ? index.byPhone.get(courierPhone) || [] : [],
+  ];
+
+  for (const rows of sources) {
+    for (const row of rows) {
+      matchedRows.set(createRowKey(row), row);
+    }
+  }
+
+  return Array.from(matchedRows.values());
+}
+
+function getLatestPerformanceDate(rows: Array<{ data: string }>) {
+  return rows.reduce<string | null>((latestDate, row) => {
+    if (!row.data) {
+      return latestDate;
+    }
+
+    if (!latestDate || row.data > latestDate) {
+      return row.data;
+    }
+
+    return latestDate;
+  }, null);
+}
+
+function getMostFrequentLabel(values: string[]) {
+  if (values.length === 0) {
+    return null;
+  }
+
+  const counts = values.reduce<Record<string, number>>((acc, value) => {
+    acc[value] = (acc[value] || 0) + 1;
+    return acc;
+  }, {});
+
+  return Object.entries(counts)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "pt-BR"))
+    .at(0)?.[0] || null;
+}
+
+function getPerformanceScore(summary: {
+  avgTsh: number | null;
+  avgAr: number | null;
+  avgCaa: number | null;
+  avgOvertime: number | null;
+}) {
+  const values = [
+    summary.avgTsh !== null ? summary.avgTsh * 0.35 : null,
+    summary.avgAr !== null ? summary.avgAr * 0.35 : null,
+    summary.avgCaa !== null ? (100 - summary.avgCaa) * 0.15 : null,
+    summary.avgOvertime !== null ? (100 - summary.avgOvertime) * 0.15 : null,
+  ].filter((value): value is number => value !== null);
+
+  if (values.length === 0) {
+    return null;
+  }
+
+  return values.reduce((acc, value) => acc + value, 0);
+}
+
+function getPerformanceTier(summary: Omit<CourierPerformanceSummary, "tier" | "recommendation">): CourierPerformanceTier {
+  if (!summary.hasPerformanceHistory) {
+    return "sem_historico";
+  }
+
+  if (!summary.hasRunLast30Days) {
+    return "parado";
+  }
+
+  if (summary.score !== null && summary.hasRunLast15Days && summary.score >= 85) {
+    return "bom";
+  }
+
+  if (summary.score !== null && summary.hasRunLast15Days && summary.score >= 70) {
+    return "regular";
+  }
+
+  return "atencao";
+}
+
+function getPerformanceRecommendation(summary: {
+  tier: CourierPerformanceTier;
+  dominantHotZone: string | null;
+  dominantShift: string | null;
+  hasRunLast30Days: boolean;
+}) {
+  if (!summary.hasRunLast30Days) {
+    return "Sem rodada recente para recomendar escala.";
+  }
+
+  if (summary.dominantHotZone && summary.dominantShift) {
+    return `Costuma rodar melhor em ${summary.dominantHotZone} no periodo ${summary.dominantShift}.`;
+  }
+
+  if (summary.dominantHotZone) {
+    return `Costuma aparecer mais na Hot Zone ${summary.dominantHotZone}.`;
+  }
+
+  if (summary.dominantShift) {
+    return `Costuma aparecer mais no periodo ${summary.dominantShift}.`;
+  }
+
+  if (summary.tier === "bom") {
+    return "Tem historico bom e pode ajudar quando faltar slot.";
+  }
+
+  return "Ainda sem padrao operacional claro por hot zone ou periodo.";
+}
+
+function formatMetricLabel(value: number | null, { reverse = false }: { reverse?: boolean } = {}) {
+  if (value === null) {
+    return "--";
+  }
+
+  const rounded = `${value.toFixed(1)}%`;
+  return reverse ? `${rounded} (menor melhor)` : rounded;
+}
+
+function buildCourierPerformanceSummary(
+  dailyRows: DailyPerformanceRow[],
+  shiftRows: ShiftPerformanceRow[],
+  latestPerformanceDate: string | null,
+): CourierPerformanceSummary {
+  const last15Start = latestPerformanceDate ? subtractDaysFromIsoDate(latestPerformanceDate, 14) : null;
+  const last30Start = latestPerformanceDate ? subtractDaysFromIsoDate(latestPerformanceDate, 29) : null;
+  const lastRunDate =
+    getLatestPerformanceDate(dailyRows) ||
+    getLatestPerformanceDate(shiftRows.map((row) => ({ data: row.data }))) ||
+    null;
+  const dailyRowsLast15 = last15Start ? dailyRows.filter((row) => row.data >= last15Start) : [];
+  const dailyRowsLast30 = last30Start ? dailyRows.filter((row) => row.data >= last30Start) : [];
+  const shiftRowsLast30 = last30Start ? shiftRows.filter((row) => row.data >= last30Start) : [];
+  const activeDaysLast30 = new Set(dailyRowsLast30.map((row) => row.data)).size;
+  const totalOrdersLast30 = sumNumbers(dailyRowsLast30.map((row) => parseNumber(row.pedidos_finalizados)));
+  const avgTsh = averageNumbers(dailyRowsLast30.map((row) => normalizePercentMetric(row.tsh)));
+  const avgTshCritical = averageNumbers(dailyRowsLast30.map((row) => normalizePercentMetric(row.tsh_critico)));
+  const avgAr = averageNumbers(dailyRowsLast30.map((row) => normalizePercentMetric(row.ar)));
+  const avgCaa = averageNumbers(dailyRowsLast30.map((row) => normalizePercentMetric(row.caa)));
+  const avgOvertime = averageNumbers(dailyRowsLast30.map((row) => normalizePercentMetric(row.overtime)));
+  const score = getPerformanceScore({ avgTsh, avgAr, avgCaa, avgOvertime });
+  const dominantHotZone = getMostFrequentLabel(
+    shiftRowsLast30.map((row) => row.hot_zone || "").filter(Boolean),
+  );
+  const dominantShift = getMostFrequentLabel(
+    shiftRowsLast30.map((row) => row.periodo_turno || "").filter(Boolean),
+  );
+  const baseSummary = {
+    hasPerformanceHistory: dailyRows.length > 0 || shiftRows.length > 0,
+    hasRunOnLatestDate: Boolean(latestPerformanceDate && dailyRows.some((row) => row.data === latestPerformanceDate)),
+    hasRunLast15Days: dailyRowsLast15.length > 0,
+    hasRunLast30Days: dailyRowsLast30.length > 0,
+    lastRunDate,
+    activeDaysLast30,
+    totalOrdersLast30,
+    avgTsh,
+    avgTshCritical,
+    avgAr,
+    avgCaa,
+    avgOvertime,
+    score,
+    dominantHotZone,
+    dominantShift,
+  };
+  const tier = getPerformanceTier(baseSummary);
+
+  return {
+    ...baseSummary,
+    tier,
+    recommendation: getPerformanceRecommendation({
+      tier,
+      dominantHotZone,
+      dominantShift,
+      hasRunLast30Days: baseSummary.hasRunLast30Days,
+    }),
+  };
+}
+
+function matchesOperationalFilter(courier: BagCourierInsightView, filter: OperationalFilter) {
+  switch (filter) {
+    case "ativos_hoje":
+      return courier.performance.hasRunOnLatestDate;
+    case "ativos_15d":
+      return courier.performance.hasRunLast15Days;
+    case "sem_15d":
+      return !courier.performance.hasRunLast15Days;
+    case "sem_30d":
+      return !courier.performance.hasRunLast30Days;
+    case "nunca_rodaram":
+      return !courier.performance.hasPerformanceHistory;
+    case "bons_candidatos":
+      return courier.performance.tier === "bom";
+    case "atencao":
+      return courier.performance.tier === "atencao" || courier.performance.tier === "parado";
+    case "todos":
+    default:
+      return true;
+  }
+}
+
+function getCourierPriority(courier: BagCourierInsightView): [number, number, string] {
+  const priorityByTier: Record<CourierPerformanceTier, number> = {
+    parado: 0,
+    atencao: 1,
+    sem_historico: 2,
+    regular: 3,
+    bom: 4,
+  };
+
+  return [
+    priorityByTier[courier.performance.tier],
+    courier.performance.lastRunDate ? -Number(courier.performance.lastRunDate.replace(/-/g, "")) : Number.MAX_SAFE_INTEGER,
+    courier.full_name,
+  ];
+}
+
+function matchesCourierSearch(
+  courier: BagCourierInsightView,
   searchTerm: string,
   bagStatusLabels: Record<string, string>,
 ) {
@@ -315,6 +768,11 @@ function matchesCourierSearch(
     courier.preferred_shifts.map((value) => BAG_SHIFT_LABELS[value] || value).join(" "),
     courier.preferred_weekdays.map((value) => BAG_WEEKDAY_LABELS[value] || value).join(" "),
     courier.joined_telegram_group ? "telegram sim" : "telegram nao",
+    courier.performance.lastRunDate || "",
+    courier.performance.dominantHotZone || "",
+    courier.performance.dominantShift || "",
+    PERFORMANCE_TIER_LABELS[courier.performance.tier],
+    courier.performance.recommendation || "",
   ]
     .map((value) => normalizeSearchValue(value))
     .join(" ");
@@ -325,6 +783,7 @@ function matchesCourierSearch(
 type InformacoesBagPageProps = {
   searchParams?: Promise<{
     busca?: string | string[];
+    situacao?: string | string[];
   }>;
 };
 
@@ -336,12 +795,14 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
   }
 
   const tenantId = currentUser.current_tenant.id;
-  const [citiesResult, regionsResult, operators, couriersResult, bagStatusesResult] = await Promise.all([
+  const [citiesResult, regionsResult, operators, couriersResult, bagStatusesResult, dailyPerformanceRows, shiftPerformanceRows] = await Promise.all([
     getTenantCities(tenantId),
     getTenantRegions(tenantId),
     getTenantOperators(tenantId),
     getBagCouriers(tenantId),
     getTenantBagStatuses(tenantId),
+    getDailyPerformanceRows(tenantId),
+    getShiftPerformanceRows(tenantId),
   ]);
 
   const foundationReady =
@@ -358,16 +819,91 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
     typeof resolvedSearchParams.busca === "string"
       ? resolvedSearchParams.busca
       : resolvedSearchParams.busca?.[0] || "";
+  const rawOperationalFilter =
+    typeof resolvedSearchParams.situacao === "string"
+      ? resolvedSearchParams.situacao
+      : resolvedSearchParams.situacao?.[0] || "todos";
+  const operationalFilter = (Object.keys(OPERATIONAL_FILTER_LABELS) as OperationalFilter[]).includes(
+    rawOperationalFilter as OperationalFilter,
+  )
+    ? (rawOperationalFilter as OperationalFilter)
+    : "todos";
   const searchTerm = normalizeSearchValue(rawSearch);
-  const filteredCouriers = couriers.filter((courier) =>
-    matchesCourierSearch(courier, searchTerm, bagStatusLabels),
+  const latestPerformanceDate = getLatestPerformanceDate(dailyPerformanceRows);
+  const dailyPerformanceIndex = buildPerformanceIndex(dailyPerformanceRows);
+  const shiftPerformanceIndex = buildPerformanceIndex(shiftPerformanceRows);
+  const couriersWithInsights = couriers
+    .map((courier) => {
+      const matchedDailyRows = getMatchedPerformanceRows(
+        courier,
+        dailyPerformanceIndex,
+        (row) => [
+          row.data,
+          row.id_entregador || "",
+          row.cpf_entregador || "",
+          row.numero_telefone || "",
+        ].join("|"),
+      );
+      const matchedShiftRows = getMatchedPerformanceRows(
+        courier,
+        shiftPerformanceIndex,
+        (row) => [
+          row.data,
+          row.periodo_turno || "",
+          row.hot_zone || "",
+          row.id_entregador || "",
+          row.cpf_entregador || "",
+          row.numero_telefone || "",
+        ].join("|"),
+      );
+
+      return {
+        ...courier,
+        performance: buildCourierPerformanceSummary(
+          matchedDailyRows,
+          matchedShiftRows,
+          latestPerformanceDate,
+        ),
+      };
+    })
+    .sort((a, b) => {
+      const [aTierPriority, aDatePriority, aNamePriority] = getCourierPriority(a);
+      const [bTierPriority, bDatePriority, bNamePriority] = getCourierPriority(b);
+
+      if (aTierPriority !== bTierPriority) {
+        return aTierPriority - bTierPriority;
+      }
+
+      if (aDatePriority !== bDatePriority) {
+        return aDatePriority - bDatePriority;
+      }
+
+      return aNamePriority.localeCompare(bNamePriority, "pt-BR");
+    });
+  const filteredCouriers = couriersWithInsights.filter(
+    (courier) =>
+      matchesOperationalFilter(courier, operationalFilter) &&
+      matchesCourierSearch(courier, searchTerm, bagStatusLabels),
   );
+  const totalRegisteredCouriers = couriersWithInsights.length;
+  const couriersRunningOnLatestDate = couriersWithInsights.filter((courier) => courier.performance.hasRunOnLatestDate).length;
+  const couriersRunningLast15Days = couriersWithInsights.filter((courier) => courier.performance.hasRunLast15Days).length;
+  const couriersInactiveLast15Days = couriersWithInsights.filter((courier) => !courier.performance.hasRunLast15Days).length;
+  const couriersInactiveLast30Days = couriersWithInsights.filter((courier) => !courier.performance.hasRunLast30Days).length;
+  const couriersNeverRan = couriersWithInsights.filter((courier) => !courier.performance.hasPerformanceHistory).length;
+  const goodCandidates = couriersWithInsights.filter((courier) => courier.performance.tier === "bom").length;
+  const couriersNeedingAttention = couriersWithInsights.filter(
+    (courier) => courier.performance.tier === "atencao" || courier.performance.tier === "parado",
+  ).length;
+  const highlightedCandidates = couriersWithInsights
+    .filter((courier) => courier.performance.tier === "bom")
+    .slice(0, 3);
 
   return (
     <AppShell
       currentPath="/informacoes-bag"
       title="Entregadores"
-      description="Consulte a base de entregadores, pesquise rapidamente e abra o cadastro apenas quando precisar incluir alguem novo."
+      description="Olhe a base inteira, descubra quem esta rodando, quem sumiu da operacao e quem pode cobrir hot zones e periodos com mais seguranca."
       user={currentUser}
     >
       {!foundationReady ? (
@@ -385,14 +921,76 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
       ) : (
         <>
           <section className="summary-grid">
-            <SummaryCard title="Entregadores" value={couriers.length} />
+            <SummaryCard title="Cadastrados" value={totalRegisteredCouriers} />
+            <SummaryCard
+              title="Rodando no ultimo dia"
+              value={couriersRunningOnLatestDate}
+              subtitle={
+                latestPerformanceDate
+                  ? `Base ${formatDateLabel(latestPerformanceDate)}`
+                  : "Sem leitura de performance"
+              }
+            />
+            <SummaryCard title="Rodaram 15 dias" value={couriersRunningLast15Days} />
+            <SummaryCard title="Sem rodar 15 dias" value={couriersInactiveLast15Days} />
+            <SummaryCard title="Sem rodar 30 dias" value={couriersInactiveLast30Days} />
+            <SummaryCard title="Nunca rodaram" value={couriersNeverRan} />
+          </section>
+
+          <section className="summary-grid">
+            <SummaryCard
+              title="Bons candidatos"
+              value={goodCandidates}
+              subtitle="TSH e AR altos, com CAA e Overtime baixos"
+            />
+            <SummaryCard
+              title="Pedem atencao"
+              value={couriersNeedingAttention}
+              subtitle="Inclui historico fraco ou sem rodada recente"
+            />
             {bagStatusesResult.data.map((status) => (
               <SummaryCard
                 key={status.id}
                 title={status.label}
-                value={couriers.filter((item) => item.bag_status === status.slug).length}
+                value={couriersWithInsights.filter((item) => item.bag_status === status.slug).length}
               />
             ))}
+          </section>
+
+          <section className="panel">
+            <div className="panel-header">
+              <div>
+                <h2>Leitura operacional</h2>
+                <p>
+                  {latestPerformanceDate
+                    ? `Ultima leitura de performance disponivel em ${formatDateLabel(latestPerformanceDate)}.`
+                    : "Ainda nao existe leitura de performance para cruzar com a base de entregadores."}
+                </p>
+              </div>
+            </div>
+            <div className="courier-insights-grid">
+              <article className="platform-note">
+                <strong>Base ativa</strong>
+                <p>
+                  {couriersRunningLast15Days} entregadores rodaram nos ultimos 15 dias e{" "}
+                  {couriersInactiveLast30Days} estao ha pelo menos 30 dias sem rodar.
+                </p>
+              </article>
+              <article className="platform-note">
+                <strong>Quem pode cobrir slot</strong>
+                <p>
+                  {highlightedCandidates.length > 0
+                    ? highlightedCandidates
+                        .map((courier) => {
+                          const place = courier.performance.dominantHotZone || "Hot Zone sem padrao";
+                          const shift = courier.performance.dominantShift || "periodo sem padrao";
+                          return `${courier.full_name} (${place} / ${shift})`;
+                        })
+                        .join(" · ")
+                    : "Ainda nao ha candidatos fortes o suficiente para sugerir cobertura automatica."}
+                </p>
+              </article>
+            </div>
           </section>
 
           {citiesResult.data.length === 0 ? (
@@ -454,11 +1052,11 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
           <section className="panel">
             <div className="panel-header">
               <div>
-                <h2>Entregadores cadastrados</h2>
+                <h2>Painel de entregadores</h2>
                 <p>
                   {searchTerm
-                    ? `Mostrando ${filteredCouriers.length} de ${couriers.length} entregadores para a busca atual.`
-                    : "Consulte rapidamente se o entregador esta com BAG, precisa retirar ou ja foi desvinculado."}
+                    ? `Mostrando ${filteredCouriers.length} de ${couriersWithInsights.length} entregadores para a busca atual.`
+                    : OPERATIONAL_FILTER_LABELS[operationalFilter]}
                 </p>
               </div>
               <form action="/informacoes-bag" method="get" className="courier-toolbar">
@@ -469,10 +1067,21 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
                   className="text-input courier-search-input"
                   placeholder="Pesquisar por nome, ID, telefone, CPF, status, Hot Zone ou operador"
                 />
+                <select
+                  name="situacao"
+                  defaultValue={operationalFilter}
+                  className="select-input courier-filter-select"
+                >
+                  {(Object.keys(OPERATIONAL_FILTER_LABELS) as OperationalFilter[]).map((filterKey) => (
+                    <option key={filterKey} value={filterKey}>
+                      {OPERATIONAL_FILTER_LABELS[filterKey]}
+                    </option>
+                  ))}
+                </select>
                 <button type="submit" className="secondary-button">
-                  Pesquisar
+                  Filtrar
                 </button>
-                {rawSearch ? (
+                {rawSearch || operationalFilter !== "todos" ? (
                   <Link href="/informacoes-bag" className="link-button">
                     Limpar
                   </Link>
@@ -498,6 +1107,44 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
                       <p>Telegram: {courier.joined_telegram_group ? "Sim" : "Nao"}</p>
                       <p>Identidade: {courier.identity_number || "Nao informada"}</p>
                       <p>Observacao: {courier.observation || "Sem observacoes"}</p>
+                      <div className="courier-performance-grid">
+                        <span className="courier-performance-stat">
+                          <strong>Ultima rodada</strong>
+                          <span>{formatDateLabel(courier.performance.lastRunDate)}</span>
+                        </span>
+                        <span className="courier-performance-stat">
+                          <strong>Dias ativos 30d</strong>
+                          <span>{courier.performance.activeDaysLast30}</span>
+                        </span>
+                        <span className="courier-performance-stat">
+                          <strong>Pedidos 30d</strong>
+                          <span>{courier.performance.totalOrdersLast30}</span>
+                        </span>
+                        <span className="courier-performance-stat">
+                          <strong>TSH</strong>
+                          <span>{formatMetricLabel(courier.performance.avgTsh)}</span>
+                        </span>
+                        <span className="courier-performance-stat">
+                          <strong>AR</strong>
+                          <span>{formatMetricLabel(courier.performance.avgAr)}</span>
+                        </span>
+                        <span className="courier-performance-stat">
+                          <strong>CAA</strong>
+                          <span>{formatMetricLabel(courier.performance.avgCaa, { reverse: true })}</span>
+                        </span>
+                        <span className="courier-performance-stat">
+                          <strong>Overtime</strong>
+                          <span>{formatMetricLabel(courier.performance.avgOvertime, { reverse: true })}</span>
+                        </span>
+                        <span className="courier-performance-stat">
+                          <strong>TSH critico</strong>
+                          <span>{formatMetricLabel(courier.performance.avgTshCritical)}</span>
+                        </span>
+                      </div>
+                      <p className="courier-highlight">
+                        <strong>Melhor encaixe:</strong>{" "}
+                        {courier.performance.recommendation}
+                      </p>
                       {courier.whatsapp_web_link ? (
                         <p>
                           <a
@@ -512,6 +1159,11 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
                       ) : null}
                     </div>
                     <div className="user-card-meta">
+                      <span
+                        className={`day-chip ${PERFORMANCE_TIER_CLASS_NAMES[courier.performance.tier]}`}
+                      >
+                        {PERFORMANCE_TIER_LABELS[courier.performance.tier]}
+                      </span>
                       <span className="day-chip">
                         {bagStatusLabels[courier.bag_status] || courier.bag_status}
                       </span>
@@ -523,11 +1175,11 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
                     </div>
                   </article>
                 ))
-              ) : couriers.length > 0 ? (
+              ) : couriersWithInsights.length > 0 ? (
                 <article className="user-card">
                   <div>
                     <strong>Nenhum entregador encontrado</strong>
-                    <p>Altere a busca para localizar por nome, ID, telefone, CPF, status, Hot Zone ou operador.</p>
+                    <p>Altere a busca ou o filtro para localizar por nome, ID, telefone, CPF, status, Hot Zone, operador ou situacao operacional.</p>
                   </div>
                 </article>
               ) : (
