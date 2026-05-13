@@ -387,6 +387,211 @@ select {
   gap: 16px;
 }
 
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.comparison-bars {
+  display: grid;
+  gap: 12px;
+}
+
+.comparison-row {
+  display: grid;
+  gap: 6px;
+}
+
+.comparison-row-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+
+.comparison-row-top strong {
+  font-size: 13px;
+}
+
+.comparison-row-top span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.comparison-track {
+  height: 10px;
+  border-radius: 999px;
+  background: #edf3f7;
+  overflow: hidden;
+}
+
+.comparison-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.comparison-fill-neutral {
+  background: linear-gradient(90deg, #94a3b8 0%, #64748b 100%);
+}
+
+.comparison-fill-success {
+  background: linear-gradient(90deg, #22c55e 0%, #15803d 100%);
+}
+
+.comparison-fill-info {
+  background: linear-gradient(90deg, #38bdf8 0%, #2563eb 100%);
+}
+
+.comparison-fill-warning {
+  background: linear-gradient(90deg, #fb923c 0%, #ea580c 100%);
+}
+
+.comparison-fill-danger {
+  background: linear-gradient(90deg, #f87171 0%, #dc2626 100%);
+}
+
+.efficiency-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.status-chip-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: #f8fbfd;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.trend-hero {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+}
+
+.trend-eyebrow {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.trend-value,
+.metric-trend-value {
+  display: block;
+  font-size: 34px;
+  line-height: 1;
+}
+
+.trend-caption,
+.metric-trend-subtitle {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.sparkline {
+  width: 100%;
+  height: 84px;
+}
+
+.sparkline path {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sparkline-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 84px;
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.sparkline-activity path {
+  stroke: #0f766e;
+}
+
+.sparkline-success path {
+  stroke: #15803d;
+}
+
+.sparkline-info path {
+  stroke: #2563eb;
+}
+
+.sparkline-warning path {
+  stroke: #c2410c;
+}
+
+.sparkline-danger path {
+  stroke: #dc2626;
+}
+
+.trend-axis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.metric-trend-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.metric-trend-card {
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbfd 100%);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+}
+
+.metric-trend-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.courier-context-note {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #f6fafc;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
 .courier-performance-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -943,6 +1148,9 @@ select {
   }
 
   .overview-grid,
+  .dashboard-grid,
+  .metric-trend-grid,
+  .efficiency-grid,
   .tenant-form-grid,
   .manual-form-grid,
   .filters-grid,
@@ -952,6 +1160,10 @@ select {
 
   .time-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .trend-hero {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -971,7 +1183,10 @@ select {
   }
 
   .overview-grid,
+  .dashboard-grid,
   .summary-grid,
+  .metric-trend-grid,
+  .efficiency-grid,
   .module-grid,
   .profile-summary,
   .tenant-form-grid,
@@ -1010,6 +1225,10 @@ select {
   .courier-insights-grid,
   .courier-performance-grid {
     grid-template-columns: 1fr;
+  }
+
+  .trend-axis {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .bag-create-summary {

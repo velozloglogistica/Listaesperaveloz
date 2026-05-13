@@ -4,7 +4,6 @@ import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { BagCourierForm } from "@/components/bag-courier-form";
 import { BagStatusForm } from "@/components/bag-status-form";
-import { SummaryCard } from "@/components/summary-card";
 import {
   BAG_SHIFT_LABELS,
   BAG_WEEKDAY_LABELS,
@@ -125,8 +124,20 @@ type CourierPerformanceSummary = {
   recommendation: string | null;
 };
 
+type TrendPoint = {
+  date: string;
+  label: string;
+  value: number;
+};
+
+type RankingOrder = "melhor_pior" | "pior_melhor" | "mais_recente" | "mais_parado";
+
 type BagCourierInsightView = BagCourierView & {
   performance: CourierPerformanceSummary;
+  listPerformance: CourierPerformanceSummary;
+  hasContextMatch: boolean;
+  matchesSelectedHotZone: boolean;
+  matchesSelectedTurno: boolean;
 };
 
 type OperationalFilter =
@@ -164,6 +175,13 @@ const OPERATIONAL_FILTER_LABELS: Record<OperationalFilter, string> = {
   nunca_rodaram: "Nunca rodaram",
   bons_candidatos: "Bons candidatos",
   atencao: "Pedem atencao",
+};
+
+const RANKING_ORDER_LABELS: Record<RankingOrder, string> = {
+  melhor_pior: "Melhor para pior",
+  pior_melhor: "Pior para melhor",
+  mais_recente: "Rodou mais recente",
+  mais_parado: "Mais parado primeiro",
 };
 
 async function getTenantCities(
@@ -581,6 +599,147 @@ function getDistinctPerformanceCourierCount(
   ).size;
 }
 
+function getShiftKeyFromPerformancePeriod(value: string | null | undefined): BagShift | null {
+  const normalized = normalizeSearchValue(value);
+
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized.includes("almoco")) {
+    return "almoco";
+  }
+
+  if (normalized.includes("merenda")) {
+    return "merenda";
+  }
+
+  if (normalized.includes("jantar")) {
+    return "jantar";
+  }
+
+  const hourMatch = normalized.match(/(\d{1,2})[:h]/);
+  const hour = hourMatch ? Number(hourMatch[1]) : null;
+
+  if (hour === null || !Number.isFinite(hour)) {
+    return null;
+  }
+
+  if (hour < 15) {
+    return "almoco";
+  }
+
+  if (hour < 18) {
+    return "merenda";
+  }
+
+  return "jantar";
+}
+
+function getDateLabelShort(value: string) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "UTC",
+    day: "2-digit",
+    month: "2-digit",
+  }).format(new Date(`${value}T00:00:00Z`));
+}
+
+function buildDateRange(latestDate: string | null, days: number) {
+  if (!latestDate) {
+    return [];
+  }
+
+  return Array.from({ length: days }, (_, index) =>
+    subtractDaysFromIsoDate(latestDate, days - index - 1),
+  );
+}
+
+function getTrendValueMap(rows: DailyPerformanceRow[] | ShiftPerformanceRow[], metric: keyof Pick<DailyPerformanceRow & ShiftPerformanceRow, "tsh" | "ar" | "caa" | "overtime">) {
+  return rows.reduce<Record<string, number[]>>((acc, row) => {
+    const value = normalizePercentMetric(row[metric]);
+
+    if (value === null) {
+      return acc;
+    }
+
+    acc[row.data] = [...(acc[row.data] || []), value];
+    return acc;
+  }, {});
+}
+
+function buildDistinctCourierTrend(
+  dates: string[],
+  dailyRows: DailyPerformanceRow[],
+  shiftRows: ShiftPerformanceRow[],
+) {
+  return dates.map((date) => {
+    const distinctCount = getDistinctPerformanceCourierCount([
+      ...dailyRows.filter((row) => row.data === date),
+      ...shiftRows.filter((row) => row.data === date),
+    ]);
+
+    return {
+      date,
+      label: getDateLabelShort(date),
+      value: distinctCount,
+    };
+  });
+}
+
+function buildMetricTrend(
+  dates: string[],
+  dailyRows: DailyPerformanceRow[],
+  shiftRows: ShiftPerformanceRow[],
+  metric: "tsh" | "ar" | "caa" | "overtime",
+) {
+  const dailyValuesByDate = getTrendValueMap(dailyRows, metric);
+  const shiftValuesByDate = getTrendValueMap(shiftRows, metric);
+
+  return dates.map((date) => {
+    const values =
+      (dailyValuesByDate[date] && dailyValuesByDate[date].length > 0
+        ? dailyValuesByDate[date]
+        : shiftValuesByDate[date]) || [];
+
+    return {
+      date,
+      label: getDateLabelShort(date),
+      value: averageNumbers(values) || 0,
+    };
+  });
+}
+
+function buildSparklinePath(points: TrendPoint[], width = 240, height = 72) {
+  if (points.length === 0) {
+    return "";
+  }
+
+  const values = points.map((point) => point.value);
+  const minValue = Math.min(...values);
+  const maxValue = Math.max(...values);
+  const range = maxValue - minValue || 1;
+
+  return points
+    .map((point, index) => {
+      const x = points.length === 1 ? width / 2 : (index / (points.length - 1)) * width;
+      const y = height - ((point.value - minValue) / range) * (height - 8) - 4;
+      return `${index === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
+    })
+    .join(" ");
+}
+
+function renderSparkline(points: TrendPoint[], className: string) {
+  if (points.length === 0) {
+    return <div className={`sparkline-empty ${className}`}>Sem dados</div>;
+  }
+
+  return (
+    <svg viewBox="0 0 240 72" className={`sparkline ${className}`} preserveAspectRatio="none" aria-hidden="true">
+      <path d={buildSparklinePath(points)} />
+    </svg>
+  );
+}
+
 function getMostFrequentLabel(values: string[]) {
   if (values.length === 0) {
     return null;
@@ -671,7 +830,7 @@ function formatMetricLabel(value: number | null, { reverse = false }: { reverse?
   }
 
   const rounded = `${value.toFixed(1)}%`;
-  return reverse ? `${rounded} (menor melhor)` : rounded;
+  return reverse ? `${rounded}` : rounded;
 }
 
 function buildCourierPerformanceSummary(
@@ -744,21 +903,23 @@ function buildCourierPerformanceSummary(
 }
 
 function matchesOperationalFilter(courier: BagCourierInsightView, filter: OperationalFilter) {
+  const base = courier.listPerformance;
+
   switch (filter) {
     case "ativos_hoje":
-      return courier.performance.hasRunOnLatestDate;
+      return base.hasRunOnLatestDate;
     case "ativos_15d":
-      return courier.performance.hasRunLast15Days;
+      return base.hasRunLast15Days;
     case "sem_15d":
-      return !courier.performance.hasRunLast15Days;
+      return !base.hasRunLast15Days;
     case "sem_30d":
-      return !courier.performance.hasRunLast30Days;
+      return !base.hasRunLast30Days;
     case "nunca_rodaram":
-      return !courier.performance.hasPerformanceHistory;
+      return !base.hasPerformanceHistory;
     case "bons_candidatos":
-      return courier.performance.tier === "bom";
+      return base.tier === "bom";
     case "atencao":
-      return courier.performance.tier === "atencao" || courier.performance.tier === "parado";
+      return base.tier === "atencao" || base.tier === "parado";
     case "todos":
     default:
       return true;
@@ -775,10 +936,80 @@ function getCourierPriority(courier: BagCourierInsightView): [number, number, st
   };
 
   return [
-    priorityByTier[courier.performance.tier],
-    courier.performance.lastRunDate ? -Number(courier.performance.lastRunDate.replace(/-/g, "")) : Number.MAX_SAFE_INTEGER,
+    priorityByTier[courier.listPerformance.tier],
+    courier.listPerformance.lastRunDate
+      ? -Number(courier.listPerformance.lastRunDate.replace(/-/g, ""))
+      : Number.MAX_SAFE_INTEGER,
     courier.full_name,
   ];
+}
+
+function getContextScore(courier: BagCourierInsightView) {
+  return courier.listPerformance.score ?? -1;
+}
+
+function getContextLastRunSortValue(courier: BagCourierInsightView) {
+  return courier.listPerformance.lastRunDate
+    ? Number(courier.listPerformance.lastRunDate.replace(/-/g, ""))
+    : 0;
+}
+
+function sortCouriers(couriers: BagCourierInsightView[], order: RankingOrder) {
+  return [...couriers].sort((a, b) => {
+    if (order === "melhor_pior") {
+      const scoreDiff = getContextScore(b) - getContextScore(a);
+
+      if (scoreDiff !== 0) {
+        return scoreDiff;
+      }
+    }
+
+    if (order === "pior_melhor") {
+      const aScore = a.listPerformance.score;
+      const bScore = b.listPerformance.score;
+
+      if (aScore === null && bScore !== null) {
+        return 1;
+      }
+
+      if (aScore !== null && bScore === null) {
+        return -1;
+      }
+
+      if (aScore !== null && bScore !== null && aScore !== bScore) {
+        return aScore - bScore;
+      }
+    }
+
+    if (order === "mais_recente") {
+      const dateDiff = getContextLastRunSortValue(b) - getContextLastRunSortValue(a);
+
+      if (dateDiff !== 0) {
+        return dateDiff;
+      }
+    }
+
+    if (order === "mais_parado") {
+      const dateDiff = getContextLastRunSortValue(a) - getContextLastRunSortValue(b);
+
+      if (dateDiff !== 0) {
+        return dateDiff;
+      }
+    }
+
+    const [aTierPriority, aDatePriority, aNamePriority] = getCourierPriority(a);
+    const [bTierPriority, bDatePriority, bNamePriority] = getCourierPriority(b);
+
+    if (aTierPriority !== bTierPriority) {
+      return aTierPriority - bTierPriority;
+    }
+
+    if (aDatePriority !== bDatePriority) {
+      return aDatePriority - bDatePriority;
+    }
+
+    return aNamePriority.localeCompare(bNamePriority, "pt-BR");
+  });
 }
 
 function matchesCourierSearch(
@@ -821,6 +1052,9 @@ type InformacoesBagPageProps = {
   searchParams?: Promise<{
     busca?: string | string[];
     situacao?: string | string[];
+    hotzone?: string | string[];
+    turno?: string | string[];
+    ordenacao?: string | string[];
   }>;
 };
 
@@ -860,17 +1094,49 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
     typeof resolvedSearchParams.situacao === "string"
       ? resolvedSearchParams.situacao
       : resolvedSearchParams.situacao?.[0] || "todos";
+  const rawHotZone =
+    typeof resolvedSearchParams.hotzone === "string"
+      ? resolvedSearchParams.hotzone
+      : resolvedSearchParams.hotzone?.[0] || "";
+  const rawTurno =
+    typeof resolvedSearchParams.turno === "string"
+      ? resolvedSearchParams.turno
+      : resolvedSearchParams.turno?.[0] || "";
+  const rawRankingOrder =
+    typeof resolvedSearchParams.ordenacao === "string"
+      ? resolvedSearchParams.ordenacao
+      : resolvedSearchParams.ordenacao?.[0] || "melhor_pior";
   const operationalFilter = (Object.keys(OPERATIONAL_FILTER_LABELS) as OperationalFilter[]).includes(
     rawOperationalFilter as OperationalFilter,
   )
     ? (rawOperationalFilter as OperationalFilter)
     : "todos";
+  const selectedTurno = (Object.keys(BAG_SHIFT_LABELS) as BagShift[]).includes(rawTurno as BagShift)
+    ? (rawTurno as BagShift)
+    : "";
+  const rankingOrder = (Object.keys(RANKING_ORDER_LABELS) as RankingOrder[]).includes(
+    rawRankingOrder as RankingOrder,
+  )
+    ? (rawRankingOrder as RankingOrder)
+    : "melhor_pior";
   const searchTerm = normalizeSearchValue(rawSearch);
   const latestPerformanceDate = getLatestPerformanceDate([
     ...dailyPerformanceRows,
     ...shiftPerformanceRows.map((row) => ({ data: row.data })),
   ]);
+  const availableHotZones = Array.from(
+    new Set(
+      [
+        ...regionsResult.data.map((region) => region.name),
+        ...shiftPerformanceRows.map((row) => row.hot_zone || "").filter(Boolean),
+      ].sort((a, b) => a.localeCompare(b, "pt-BR")),
+    ),
+  );
+  const selectedHotZone = availableHotZones.find(
+    (value) => normalizeSearchValue(value) === normalizeSearchValue(rawHotZone),
+  ) || "";
   const last15Start = latestPerformanceDate ? subtractDaysFromIsoDate(latestPerformanceDate, 14) : null;
+  const recentDates = buildDateRange(latestPerformanceDate, 14);
   const performanceRowsOnLatestDate = latestPerformanceDate
     ? [
         ...dailyPerformanceRows.filter((row) => row.data === latestPerformanceDate),
@@ -885,65 +1151,79 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
     : [];
   const dailyPerformanceIndex = buildPerformanceIndex(dailyPerformanceRows);
   const shiftPerformanceIndex = buildPerformanceIndex(shiftPerformanceRows);
-  const couriersWithInsights = couriers
-    .map((courier) => {
+  const hotZoneFilterActive = Boolean(selectedHotZone);
+  const turnoFilterActive = Boolean(selectedTurno);
+  const contextFilterActive = hotZoneFilterActive || turnoFilterActive;
+  const couriersWithInsights = sortCouriers(
+    couriers.map((courier) => {
       const matchedDailyRows = getMatchedPerformanceRows(
         courier,
         dailyPerformanceIndex,
-        (row) => [
-          row.data,
-          row.id_entregador || "",
-          row.cpf_entregador || "",
-          row.numero_telefone || "",
-        ].join("|"),
+        (row) => [row.data, row.id_entregador || "", row.cpf_entregador || "", row.numero_telefone || ""].join("|"),
       );
       const matchedShiftRows = getMatchedPerformanceRows(
         courier,
         shiftPerformanceIndex,
-        (row) => [
-          row.data,
-          row.periodo_turno || "",
-          row.hot_zone || "",
-          row.id_entregador || "",
-          row.cpf_entregador || "",
-          row.numero_telefone || "",
-        ].join("|"),
+        (row) =>
+          [
+            row.data,
+            row.periodo_turno || "",
+            row.hot_zone || "",
+            row.id_entregador || "",
+            row.cpf_entregador || "",
+            row.numero_telefone || "",
+          ].join("|"),
       );
+      const contextShiftRows = matchedShiftRows.filter((row) => {
+        const hotZoneMatches =
+          !hotZoneFilterActive || normalizeSearchValue(row.hot_zone) === normalizeSearchValue(selectedHotZone);
+        const turnoMatches =
+          !turnoFilterActive || getShiftKeyFromPerformancePeriod(row.periodo_turno) === selectedTurno;
+        return hotZoneMatches && turnoMatches;
+      });
+      const matchesSelectedHotZone =
+        !hotZoneFilterActive ||
+        courier.regions.some((region) => normalizeSearchValue(region) === normalizeSearchValue(selectedHotZone)) ||
+        contextShiftRows.some((row) => normalizeSearchValue(row.hot_zone) === normalizeSearchValue(selectedHotZone));
+      const matchesSelectedTurno =
+        !turnoFilterActive ||
+        courier.preferred_shifts.includes(selectedTurno as BagShift) ||
+        contextShiftRows.some((row) => getShiftKeyFromPerformancePeriod(row.periodo_turno) === selectedTurno);
+      const performance = buildCourierPerformanceSummary(matchedDailyRows, matchedShiftRows, latestPerformanceDate);
+      const listPerformance =
+        contextFilterActive
+          ? buildCourierPerformanceSummary([], contextShiftRows, latestPerformanceDate)
+          : performance;
 
       return {
         ...courier,
-        performance: buildCourierPerformanceSummary(
-          matchedDailyRows,
-          matchedShiftRows,
-          latestPerformanceDate,
-        ),
+        performance,
+        listPerformance,
+        hasContextMatch: contextShiftRows.length > 0,
+        matchesSelectedHotZone,
+        matchesSelectedTurno,
       };
-    })
-    .sort((a, b) => {
-      const [aTierPriority, aDatePriority, aNamePriority] = getCourierPriority(a);
-      const [bTierPriority, bDatePriority, bNamePriority] = getCourierPriority(b);
-
-      if (aTierPriority !== bTierPriority) {
-        return aTierPriority - bTierPriority;
-      }
-
-      if (aDatePriority !== bDatePriority) {
-        return aDatePriority - bDatePriority;
-      }
-
-      return aNamePriority.localeCompare(bNamePriority, "pt-BR");
-    });
-  const filteredCouriers = couriersWithInsights.filter(
-    (courier) =>
-      matchesOperationalFilter(courier, operationalFilter) &&
-      matchesCourierSearch(courier, searchTerm, bagStatusLabels),
+    }),
+    rankingOrder,
   );
+  const filteredCouriers = couriersWithInsights.filter((courier) => {
+    const matchesContextFilters =
+      (!hotZoneFilterActive || courier.matchesSelectedHotZone) &&
+      (!turnoFilterActive || courier.matchesSelectedTurno);
+
+    return (
+      matchesContextFilters &&
+      matchesOperationalFilter(courier, operationalFilter) &&
+      matchesCourierSearch(courier, searchTerm, bagStatusLabels)
+    );
+  });
   const totalRegisteredCouriers = couriersWithInsights.length;
   const couriersRunningOnLatestDate = getDistinctPerformanceCourierCount(performanceRowsOnLatestDate);
   const couriersRunningLast15Days = getDistinctPerformanceCourierCount(performanceRowsLast15Days);
   const couriersInactiveLast15Days = couriersWithInsights.filter((courier) => !courier.performance.hasRunLast15Days).length;
   const couriersInactiveLast30Days = couriersWithInsights.filter((courier) => !courier.performance.hasRunLast30Days).length;
   const couriersNeverRan = couriersWithInsights.filter((courier) => !courier.performance.hasPerformanceHistory).length;
+  const couriersEverRan = couriersWithInsights.filter((courier) => courier.performance.hasPerformanceHistory).length;
   const goodCandidates = couriersWithInsights.filter((courier) => courier.performance.tier === "bom").length;
   const couriersNeedingAttention = couriersWithInsights.filter(
     (courier) => courier.performance.tier === "atencao" || courier.performance.tier === "parado",
@@ -951,6 +1231,15 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
   const highlightedCandidates = couriersWithInsights
     .filter((courier) => courier.performance.tier === "bom")
     .slice(0, 3);
+  const activityTrend = buildDistinctCourierTrend(recentDates, dailyPerformanceRows, shiftPerformanceRows);
+  const tshTrend = buildMetricTrend(recentDates, dailyPerformanceRows, shiftPerformanceRows, "tsh");
+  const arTrend = buildMetricTrend(recentDates, dailyPerformanceRows, shiftPerformanceRows, "ar");
+  const caaTrend = buildMetricTrend(recentDates, dailyPerformanceRows, shiftPerformanceRows, "caa");
+  const overtimeTrend = buildMetricTrend(recentDates, dailyPerformanceRows, shiftPerformanceRows, "overtime");
+  const bagStatusSummary = bagStatusesResult.data.map((status) => ({
+    ...status,
+    count: couriersWithInsights.filter((item) => item.bag_status === status.slug).length,
+  }));
 
   return (
     <AppShell
@@ -973,77 +1262,152 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
         </section>
       ) : (
         <>
-          <section className="summary-grid">
-            <SummaryCard title="Cadastrados" value={totalRegisteredCouriers} />
-            <SummaryCard
-              title="Rodando no ultimo dia"
-              value={couriersRunningOnLatestDate}
-              subtitle={
-                latestPerformanceDate
-                  ? `Base ${formatDateLabel(latestPerformanceDate)}`
-                  : "Sem leitura de performance"
-              }
-            />
-            <SummaryCard title="Rodaram 15 dias" value={couriersRunningLast15Days} />
-            <SummaryCard title="Sem rodar 15 dias" value={couriersInactiveLast15Days} />
-            <SummaryCard title="Sem rodar 30 dias" value={couriersInactiveLast30Days} />
-            <SummaryCard title="Nunca rodaram" value={couriersNeverRan} />
-          </section>
-
-          <section className="summary-grid">
-            <SummaryCard
-              title="Bons candidatos"
-              value={goodCandidates}
-              subtitle="TSH e AR altos, com CAA e Overtime baixos"
-            />
-            <SummaryCard
-              title="Pedem atencao"
-              value={couriersNeedingAttention}
-              subtitle="Inclui historico fraco ou sem rodada recente"
-            />
-            {bagStatusesResult.data.map((status) => (
-              <SummaryCard
-                key={status.id}
-                title={status.label}
-                value={couriersWithInsights.filter((item) => item.bag_status === status.slug).length}
-              />
-            ))}
-          </section>
-
-          <section className="panel">
-            <div className="panel-header">
-              <div>
-                <h2>Leitura operacional</h2>
-                <p>
-                  {latestPerformanceDate
-                    ? `Ultima leitura de performance disponivel em ${formatDateLabel(latestPerformanceDate)}.`
-                    : "Ainda nao existe leitura de performance para cruzar com a base de entregadores."}
-                </p>
+          <section className="dashboard-grid">
+            <section className="panel">
+              <div className="panel-header">
+                <div>
+                  <h2>Visao da base</h2>
+                  <p>
+                    {latestPerformanceDate
+                      ? `Comparativo da base cadastrada com a ultima leitura de ${formatDateLabel(latestPerformanceDate)}.`
+                      : "Ainda nao existe leitura de performance para comparar a base."}
+                  </p>
+                </div>
               </div>
-            </div>
-            <div className="courier-insights-grid">
-              <article className="platform-note">
-                <strong>Base ativa</strong>
-                <p>
-                  {couriersRunningLast15Days} entregadores rodaram nos ultimos 15 dias e{" "}
-                  {couriersInactiveLast30Days} estao ha pelo menos 30 dias sem rodar.
-                </p>
+
+              <div className="comparison-bars">
+                {[
+                  { label: "Cadastrados", value: totalRegisteredCouriers, tone: "neutral" },
+                  { label: "Ja rodaram alguma vez", value: couriersEverRan, tone: "success" },
+                  { label: "Rodaram 15 dias", value: couriersRunningLast15Days, tone: "info" },
+                  { label: "Sem rodar 30 dias", value: couriersInactiveLast30Days, tone: "warning" },
+                  { label: "Nunca rodaram", value: couriersNeverRan, tone: "danger" },
+                ].map((item) => (
+                  <div key={item.label} className="comparison-row">
+                    <div className="comparison-row-top">
+                      <strong>{item.label}</strong>
+                      <span>{item.value}</span>
+                    </div>
+                    <div className="comparison-track">
+                      <div
+                        className={`comparison-fill comparison-fill-${item.tone}`}
+                        style={{
+                          width: `${totalRegisteredCouriers > 0 ? (item.value / totalRegisteredCouriers) * 100 : 0}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="efficiency-grid">
+                <article className="platform-note">
+                  <strong>Eficiencia da base</strong>
+                  <p>
+                    {totalRegisteredCouriers > 0
+                      ? `${Math.round((couriersRunningLast15Days / totalRegisteredCouriers) * 100)}% da base cadastrada rodou nos ultimos 15 dias.`
+                      : "Sem base cadastrada para comparar."}
+                  </p>
+                </article>
+                <article className="platform-note">
+                  <strong>Quem pode cobrir slot</strong>
+                  <p>
+                    {highlightedCandidates.length > 0
+                      ? highlightedCandidates
+                          .map((courier) => {
+                            const place = courier.performance.dominantHotZone || "Hot Zone sem padrao";
+                            const shift = courier.performance.dominantShift || "periodo sem padrao";
+                            return `${courier.full_name} (${place} / ${shift})`;
+                          })
+                          .join(" · ")
+                      : "Ainda nao ha candidatos fortes o suficiente para sugerir cobertura automatica."}
+                  </p>
+                </article>
+              </div>
+
+              <div className="status-chip-grid">
+                {bagStatusSummary.map((status) => (
+                  <span key={status.id} className="status-chip">
+                    {status.label}: {status.count}
+                  </span>
+                ))}
+              </div>
+            </section>
+
+            <section className="panel">
+              <div className="panel-header">
+                <div>
+                  <h2>Atividade da base</h2>
+                  <p>Distinct de `id_entregador` por dia nos ultimos 14 dias.</p>
+                </div>
+              </div>
+
+              <div className="trend-hero">
+                <div>
+                  <p className="trend-eyebrow">Entregadores rodando</p>
+                  <strong className="trend-value">{activityTrend.at(-1)?.value || 0}</strong>
+                  <p className="trend-caption">
+                    Pico recente de {Math.max(...activityTrend.map((point) => point.value), 0)} entregadores no periodo.
+                  </p>
+                </div>
+                {renderSparkline(activityTrend, "sparkline-activity")}
+              </div>
+
+              <div className="trend-axis">
+                {activityTrend.map((point) => (
+                  <span key={point.date}>{point.label}</span>
+                ))}
+              </div>
+            </section>
+          </section>
+
+          <section className="metric-trend-grid">
+            {[
+              {
+                title: "TSH",
+                value: tshTrend.at(-1)?.value || 0,
+                points: tshTrend,
+                subtitle: "Tempo online medio",
+                className: "sparkline-success",
+              },
+              {
+                title: "AR",
+                value: arTrend.at(-1)?.value || 0,
+                points: arTrend,
+                subtitle: "Aceitacao de pedidos",
+                className: "sparkline-info",
+              },
+              {
+                title: "CAA",
+                value: caaTrend.at(-1)?.value || 0,
+                points: caaTrend,
+                subtitle: "Cancelamento, menor melhor",
+                className: "sparkline-warning",
+              },
+              {
+                title: "Overtime",
+                value: overtimeTrend.at(-1)?.value || 0,
+                points: overtimeTrend,
+                subtitle: "Atraso, menor melhor",
+                className: "sparkline-danger",
+              },
+            ].map((metric) => (
+              <article key={metric.title} className="metric-trend-card">
+                <div className="metric-trend-header">
+                  <div>
+                    <p className="trend-eyebrow">{metric.title}</p>
+                    <strong className="metric-trend-value">{metric.value.toFixed(1)}%</strong>
+                  </div>
+                  <span className="metric-trend-subtitle">{metric.subtitle}</span>
+                </div>
+                {renderSparkline(metric.points, metric.className)}
+                <div className="trend-axis">
+                  {metric.points.map((point) => (
+                    <span key={point.date}>{point.label}</span>
+                  ))}
+                </div>
               </article>
-              <article className="platform-note">
-                <strong>Quem pode cobrir slot</strong>
-                <p>
-                  {highlightedCandidates.length > 0
-                    ? highlightedCandidates
-                        .map((courier) => {
-                          const place = courier.performance.dominantHotZone || "Hot Zone sem padrao";
-                          const shift = courier.performance.dominantShift || "periodo sem padrao";
-                          return `${courier.full_name} (${place} / ${shift})`;
-                        })
-                        .join(" · ")
-                    : "Ainda nao ha candidatos fortes o suficiente para sugerir cobertura automatica."}
-                </p>
-              </article>
-            </div>
+            ))}
           </section>
 
           {citiesResult.data.length === 0 ? (
@@ -1109,7 +1473,13 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
                 <p>
                   {searchTerm
                     ? `Mostrando ${filteredCouriers.length} de ${couriersWithInsights.length} entregadores para a busca atual.`
-                    : OPERATIONAL_FILTER_LABELS[operationalFilter]}
+                    : [
+                        OPERATIONAL_FILTER_LABELS[operationalFilter],
+                        selectedHotZone ? `Hot Zone: ${selectedHotZone}` : "",
+                        selectedTurno ? `Turno: ${BAG_SHIFT_LABELS[selectedTurno as BagShift]}` : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                 </p>
               </div>
               <form action="/informacoes-bag" method="get" className="courier-toolbar">
@@ -1121,6 +1491,30 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
                   placeholder="Pesquisar por nome, ID, telefone, CPF, status, Hot Zone ou operador"
                 />
                 <select
+                  name="hotzone"
+                  defaultValue={selectedHotZone}
+                  className="select-input courier-filter-select"
+                >
+                  <option value="">Todas as Hot Zones</option>
+                  {availableHotZones.map((hotZone) => (
+                    <option key={hotZone} value={hotZone}>
+                      {hotZone}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  name="turno"
+                  defaultValue={selectedTurno}
+                  className="select-input courier-filter-select"
+                >
+                  <option value="">Todos os turnos</option>
+                  {(Object.keys(BAG_SHIFT_LABELS) as BagShift[]).map((shift) => (
+                    <option key={shift} value={shift}>
+                      {BAG_SHIFT_LABELS[shift]}
+                    </option>
+                  ))}
+                </select>
+                <select
                   name="situacao"
                   defaultValue={operationalFilter}
                   className="select-input courier-filter-select"
@@ -1131,10 +1525,21 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
                     </option>
                   ))}
                 </select>
+                <select
+                  name="ordenacao"
+                  defaultValue={rankingOrder}
+                  className="select-input courier-filter-select"
+                >
+                  {(Object.keys(RANKING_ORDER_LABELS) as RankingOrder[]).map((orderKey) => (
+                    <option key={orderKey} value={orderKey}>
+                      {RANKING_ORDER_LABELS[orderKey]}
+                    </option>
+                  ))}
+                </select>
                 <button type="submit" className="secondary-button">
                   Filtrar
                 </button>
-                {rawSearch || operationalFilter !== "todos" ? (
+                {rawSearch || operationalFilter !== "todos" || selectedHotZone || selectedTurno || rankingOrder !== "melhor_pior" ? (
                   <Link href="/informacoes-bag" className="link-button">
                     Limpar
                   </Link>
@@ -1160,43 +1565,50 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
                       <p>Telegram: {courier.joined_telegram_group ? "Sim" : "Nao"}</p>
                       <p>Identidade: {courier.identity_number || "Nao informada"}</p>
                       <p>Observacao: {courier.observation || "Sem observacoes"}</p>
+                      {contextFilterActive ? (
+                        <p className="courier-context-note">
+                          Contexto atual:{" "}
+                          {selectedHotZone ? `Hot Zone ${selectedHotZone}` : "todas as Hot Zones"} /{" "}
+                          {selectedTurno ? BAG_SHIFT_LABELS[selectedTurno as BagShift] : "todos os turnos"}
+                        </p>
+                      ) : null}
                       <div className="courier-performance-grid">
                         <span className="courier-performance-stat">
                           <strong>Ultima rodada</strong>
-                          <span>{formatDateLabel(courier.performance.lastRunDate)}</span>
+                          <span>{formatDateLabel(courier.listPerformance.lastRunDate)}</span>
                         </span>
                         <span className="courier-performance-stat">
                           <strong>Dias ativos 30d</strong>
-                          <span>{courier.performance.activeDaysLast30}</span>
+                          <span>{courier.listPerformance.activeDaysLast30}</span>
                         </span>
                         <span className="courier-performance-stat">
                           <strong>Pedidos 30d</strong>
-                          <span>{courier.performance.totalOrdersLast30}</span>
+                          <span>{courier.listPerformance.totalOrdersLast30}</span>
                         </span>
                         <span className="courier-performance-stat">
                           <strong>TSH</strong>
-                          <span>{formatMetricLabel(courier.performance.avgTsh)}</span>
+                          <span>{formatMetricLabel(courier.listPerformance.avgTsh)}</span>
                         </span>
                         <span className="courier-performance-stat">
                           <strong>AR</strong>
-                          <span>{formatMetricLabel(courier.performance.avgAr)}</span>
+                          <span>{formatMetricLabel(courier.listPerformance.avgAr)}</span>
                         </span>
                         <span className="courier-performance-stat">
                           <strong>CAA</strong>
-                          <span>{formatMetricLabel(courier.performance.avgCaa, { reverse: true })}</span>
+                          <span>{formatMetricLabel(courier.listPerformance.avgCaa, { reverse: true })}</span>
                         </span>
                         <span className="courier-performance-stat">
                           <strong>Overtime</strong>
-                          <span>{formatMetricLabel(courier.performance.avgOvertime, { reverse: true })}</span>
+                          <span>{formatMetricLabel(courier.listPerformance.avgOvertime, { reverse: true })}</span>
                         </span>
                         <span className="courier-performance-stat">
                           <strong>TSH critico</strong>
-                          <span>{formatMetricLabel(courier.performance.avgTshCritical)}</span>
+                          <span>{formatMetricLabel(courier.listPerformance.avgTshCritical)}</span>
                         </span>
                       </div>
                       <p className="courier-highlight">
                         <strong>Melhor encaixe:</strong>{" "}
-                        {courier.performance.recommendation}
+                        {courier.listPerformance.recommendation}
                       </p>
                       {courier.whatsapp_web_link ? (
                         <p>
@@ -1213,9 +1625,9 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
                     </div>
                     <div className="user-card-meta">
                       <span
-                        className={`day-chip ${PERFORMANCE_TIER_CLASS_NAMES[courier.performance.tier]}`}
+                        className={`day-chip ${PERFORMANCE_TIER_CLASS_NAMES[courier.listPerformance.tier]}`}
                       >
-                        {PERFORMANCE_TIER_LABELS[courier.performance.tier]}
+                        {PERFORMANCE_TIER_LABELS[courier.listPerformance.tier]}
                       </span>
                       <span className="day-chip">
                         {bagStatusLabels[courier.bag_status] || courier.bag_status}
