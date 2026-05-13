@@ -4,6 +4,8 @@ import { BagRegionForm } from "@/components/bag-region-form";
 import { CompanyProfileForm } from "@/components/company-profile-form";
 import { SummaryCard } from "@/components/summary-card";
 import { TenantBagStatusForm } from "@/components/tenant-bag-status-form";
+import { TenantBagStatusItem } from "@/components/tenant-bag-status-item";
+import { TenantCityItem } from "@/components/tenant-city-item";
 import { requireSettingsAccess } from "@/lib/auth";
 import { isCompanyAccessSchemaMissing } from "@/lib/company-access";
 import { supabaseServer } from "@/lib/supabase-server";
@@ -229,15 +231,12 @@ export default async function PerfilEmpresaPage() {
                 <div className="users-list">
                   {bagStatusesResult.data.length > 0 ? (
                     bagStatusesResult.data.map((status) => (
-                      <article key={status.id} className="user-card user-card-stack">
-                        <div>
-                          <strong>{status.label}</strong>
-                          <p>Codigo interno: {status.slug}</p>
-                        </div>
-                        <div className="user-card-meta">
-                          <span className="day-chip">Ativo</span>
-                        </div>
-                      </article>
+                      <TenantBagStatusItem
+                        key={status.id}
+                        id={status.id}
+                        label={status.label}
+                        slug={status.slug}
+                      />
                     ))
                   ) : (
                     <article className="user-card">
@@ -285,19 +284,16 @@ export default async function PerfilEmpresaPage() {
                 const cityHotZones = hotZonesResult.data.filter((item) => item.city_id === city.id);
 
                 return (
-                  <article key={city.id} className="user-card user-card-stack">
-                    <div>
-                      <strong>{city.name}</strong>
-                      <p>
-                        Hot Zones:{" "}
-                        {cityHotZones.map((item) => item.name).join(" · ") || "Nenhuma Hot Zone ainda"}
-                      </p>
-                    </div>
-                    <div className="user-card-meta">
-                      <span className="day-chip">{city.is_active ? "Ativa" : "Inativa"}</span>
-                      <span className="request-time">{cityHotZones.length} Hot Zone(s)</span>
-                    </div>
-                  </article>
+                  <TenantCityItem
+                    key={city.id}
+                    id={city.id}
+                    name={city.name}
+                    hotZones={cityHotZones.map((item) => ({
+                      id: item.id,
+                      name: item.name,
+                      cityName: item.city_name,
+                    }))}
+                  />
                 );
               })}
             </div>
