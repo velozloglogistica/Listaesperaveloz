@@ -85,6 +85,27 @@ before update on public.tenant_regions
 for each row
 execute function public.set_updated_at();
 
+create table if not exists public.tenant_bag_statuses (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  tenant_id uuid not null references public.tenants (id) on delete cascade,
+  slug text not null,
+  label text not null,
+  sort_order integer not null default 0,
+  is_active boolean not null default true,
+  created_by uuid references public.app_users (id)
+);
+
+create unique index if not exists tenant_bag_statuses_unique_slug_per_tenant
+on public.tenant_bag_statuses (tenant_id, slug);
+
+drop trigger if exists trg_tenant_bag_statuses_updated_at on public.tenant_bag_statuses;
+create trigger trg_tenant_bag_statuses_updated_at
+before update on public.tenant_bag_statuses
+for each row
+execute function public.set_updated_at();
+
 create table if not exists public.bag_couriers (
   id uuid primary key default gen_random_uuid(),
   created_at timestamptz not null default now(),
@@ -102,10 +123,15 @@ create table if not exists public.bag_couriers (
   preferred_shifts text[] not null default '{}',
   preferred_weekdays text[] not null default '{}',
   observation text,
-  bag_status text not null default 'chamar_para_pegar_bag'
-    check (bag_status in ('bag_com_entregador', 'chamar_para_pegar_bag', 'desvinculado')),
+  bag_status text not null,
   unique (tenant_id, partner_delivery_id)
 );
+
+alter table public.bag_couriers
+  drop constraint if exists bag_couriers_bag_status_check;
+
+alter table public.bag_couriers
+  alter column bag_status drop default;
 
 drop trigger if exists trg_bag_couriers_updated_at on public.bag_couriers;
 create trigger trg_bag_couriers_updated_at
@@ -126,3 +152,23 @@ create table if not exists public.bag_courier_regions (
   region_id uuid not null references public.tenant_regions (id) on delete cascade,
   unique (bag_courier_id, region_id)
 );
+
+insert into public.tenant_bag_statuses (tenant_id, slug, label, sort_order, is_active)
+select
+  t.id,
+  status_seed.slug,
+  status_seed.label,
+  status_seed.sort_order,
+  true
+from public.tenants t
+cross join (
+  values
+    ('bag_com_entregador', 'BAG com entregador', 1),
+    ('chamar_para_pegar_bag', 'Chamar para pegar BAG', 2),
+    ('desvinculado', 'Desvinculado', 3)
+) as status_seed(slug, label, sort_order)
+on conflict (tenant_id, slug) do update
+set
+  label = excluded.label,
+  sort_order = excluded.sort_order,
+  is_active = true;

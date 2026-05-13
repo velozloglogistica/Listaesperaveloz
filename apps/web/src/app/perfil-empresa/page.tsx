@@ -3,6 +3,7 @@ import { BagCityForm } from "@/components/bag-city-form";
 import { BagRegionForm } from "@/components/bag-region-form";
 import { CompanyProfileForm } from "@/components/company-profile-form";
 import { SummaryCard } from "@/components/summary-card";
+import { TenantBagStatusForm } from "@/components/tenant-bag-status-form";
 import { requireSettingsAccess } from "@/lib/auth";
 import { isCompanyAccessSchemaMissing } from "@/lib/company-access";
 import { supabaseServer } from "@/lib/supabase-server";
@@ -20,6 +21,12 @@ type TenantHotZoneView = {
   name: string;
   city_id: string;
   city_name: string;
+};
+
+type TenantBagStatusView = {
+  id: string;
+  slug: string;
+  label: string;
 };
 
 async function getTenantSettings(tenantId: string) {
@@ -115,18 +122,47 @@ async function getTenantHotZones(
   };
 }
 
+async function getTenantBagStatuses(
+  tenantId: string,
+): Promise<{ foundationReady: boolean; data: TenantBagStatusView[] }> {
+  const { data, error } = await supabaseServer
+    .from("tenant_bag_statuses")
+    .select("id,slug,label")
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true })
+    .order("label", { ascending: true });
+
+  if (error) {
+    if (isCompanyAccessSchemaMissing(error)) {
+      return { foundationReady: false, data: [] };
+    }
+
+    throw new Error(error.message);
+  }
+
+  return {
+    foundationReady: true,
+    data: data || [],
+  };
+}
+
 export default async function PerfilEmpresaPage() {
   const currentUser = await requireSettingsAccess();
   const tenantId = currentUser.current_tenant.id;
 
-  const [settingsResult, citiesResult, hotZonesResult] = await Promise.all([
+  const [settingsResult, citiesResult, hotZonesResult, bagStatusesResult] = await Promise.all([
     getTenantSettings(tenantId),
     getTenantCities(tenantId),
     getTenantHotZones(tenantId),
+    getTenantBagStatuses(tenantId),
   ]);
 
   const foundationReady =
-    settingsResult.foundationReady && citiesResult.foundationReady && hotZonesResult.foundationReady;
+    settingsResult.foundationReady &&
+    citiesResult.foundationReady &&
+    hotZonesResult.foundationReady &&
+    bagStatusesResult.foundationReady;
 
   return (
     <AppShell
@@ -152,11 +188,11 @@ export default async function PerfilEmpresaPage() {
           <section className="summary-grid">
             <SummaryCard title="Cidades" value={citiesResult.data.length} />
             <SummaryCard title="Hot Zones" value={hotZonesResult.data.length} />
+            <SummaryCard title="Status BAG" value={bagStatusesResult.data.length} />
             <SummaryCard
               title="West Wind"
               value={settingsResult.data.westwind_login ? "Configurado" : "Pendente"}
             />
-            <SummaryCard title="Empresa atual" value={currentUser.current_tenant.name} />
           </section>
 
           <section className="panel">
@@ -167,6 +203,53 @@ export default async function PerfilEmpresaPage() {
               </div>
             </div>
             <CompanyProfileForm initialValues={settingsResult.data} />
+          </section>
+
+          <section className="panel">
+            <div className="panel-header">
+              <div>
+                <h2>Status de BAG</h2>
+                <p>
+                  Cada empresa pode ter seus proprios status para identificar quem esta com BAG,
+                  quem precisa retirar e qualquer outro caso operacional.
+                </p>
+              </div>
+            </div>
+
+            <div className="access-grid">
+              <div className="access-panel">
+                <h3>Novo status</h3>
+                <p>Cadastre aqui os status que a empresa precisa usar no modulo Informacoes de BAG.</p>
+                <TenantBagStatusForm />
+              </div>
+
+              <div className="access-panel">
+                <h3>Status ativos</h3>
+                <p>Esses status aparecem no cadastro e na atualizacao dos entregadores.</p>
+                <div className="users-list">
+                  {bagStatusesResult.data.length > 0 ? (
+                    bagStatusesResult.data.map((status) => (
+                      <article key={status.id} className="user-card user-card-stack">
+                        <div>
+                          <strong>{status.label}</strong>
+                          <p>Codigo interno: {status.slug}</p>
+                        </div>
+                        <div className="user-card-meta">
+                          <span className="day-chip">Ativo</span>
+                        </div>
+                      </article>
+                    ))
+                  ) : (
+                    <article className="user-card">
+                      <div>
+                        <strong>Nenhum status cadastrado</strong>
+                        <p>Cadastre pelo menos um status BAG antes de usar o modulo operacional.</p>
+                      </div>
+                    </article>
+                  )}
+                </div>
+              </div>
+            </div>
           </section>
 
           <section className="panel">

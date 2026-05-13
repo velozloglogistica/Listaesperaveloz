@@ -1,4 +1,4 @@
-export const BAG_STATUS_OPTIONS = [
+export const DEFAULT_BAG_STATUS_OPTIONS = [
   { value: "bag_com_entregador", label: "BAG com entregador" },
   { value: "chamar_para_pegar_bag", label: "Chamar para pegar BAG" },
   { value: "desvinculado", label: "Desvinculado" },
@@ -25,14 +25,10 @@ export const BAG_WEEKDAY_OPTIONS = [
   { value: "domingo", label: "Domingo" },
 ] as const;
 
-export type BagStatus = (typeof BAG_STATUS_OPTIONS)[number]["value"];
+export type BagStatus = string;
 export type BagVehicle = (typeof BAG_VEHICLE_OPTIONS)[number]["value"];
 export type BagShift = (typeof BAG_SHIFT_OPTIONS)[number]["value"];
 export type BagWeekday = (typeof BAG_WEEKDAY_OPTIONS)[number]["value"];
-
-export const BAG_STATUS_LABELS: Record<BagStatus, string> = Object.fromEntries(
-  BAG_STATUS_OPTIONS.map((option) => [option.value, option.label]),
-) as Record<BagStatus, string>;
 
 export const BAG_VEHICLE_LABELS: Record<BagVehicle, string> = Object.fromEntries(
   BAG_VEHICLE_OPTIONS.map((option) => [option.value, option.label]),
@@ -45,3 +41,13 @@ export const BAG_SHIFT_LABELS: Record<BagShift, string> = Object.fromEntries(
 export const BAG_WEEKDAY_LABELS: Record<BagWeekday, string> = Object.fromEntries(
   BAG_WEEKDAY_OPTIONS.map((option) => [option.value, option.label]),
 ) as Record<BagWeekday, string>;
+
+export function createBagStatusSlug(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .replace(/_{2,}/g, "_");
+}

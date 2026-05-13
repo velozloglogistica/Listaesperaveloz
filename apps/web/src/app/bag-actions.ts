@@ -5,7 +5,6 @@ import { redirect } from "next/navigation";
 
 import {
   BAG_SHIFT_OPTIONS,
-  BAG_STATUS_OPTIONS,
   BAG_VEHICLE_OPTIONS,
   BAG_WEEKDAY_OPTIONS,
   type BagShift,
@@ -13,7 +12,7 @@ import {
   type BagVehicle,
   type BagWeekday,
 } from "@/lib/bag-config";
-import { canAccessModule, requireAppUser } from "@/lib/auth";
+import { canAccessModule, requireAppUser, requireSettingsAccess } from "@/lib/auth";
 import { isCompanyAccessSchemaMissing } from "@/lib/company-access";
 import { supabaseServer } from "@/lib/supabase-server";
 
@@ -25,7 +24,6 @@ export type BagActionState = {
 const bagSchemaMessage =
   "Falta rodar a migration do modulo BAG. Execute supabase/add_bag_information_module.sql.";
 
-const allowedStatuses = new Set<BagStatus>(BAG_STATUS_OPTIONS.map((option) => option.value));
 const allowedVehicles = new Set<BagVehicle>(BAG_VEHICLE_OPTIONS.map((option) => option.value));
 const allowedShifts = new Set<BagShift>(BAG_SHIFT_OPTIONS.map((option) => option.value));
 const allowedWeekdays = new Set<BagWeekday>(BAG_WEEKDAY_OPTIONS.map((option) => option.value));
@@ -58,11 +56,25 @@ async function requireBagInfoAccess() {
   return actor;
 }
 
+async function getTenantAllowedBagStatuses(tenantId: string) {
+  const { data, error } = await supabaseServer
+    .from("tenant_bag_statuses")
+    .select("slug")
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true);
+
+  if (error) {
+    throw error;
+  }
+
+  return new Set((data || []).map((item) => item.slug as BagStatus));
+}
+
 export async function createTenantCityAction(
   _prevState: BagActionState,
   formData: FormData,
 ): Promise<BagActionState> {
-  const actor = await requireBagInfoAccess();
+  const actor = await requireSettingsAccess();
   const tenantId = actor.current_tenant.id;
   const name = normalizeText(String(formData.get("name") || ""));
 
@@ -101,7 +113,7 @@ export async function createTenantRegionAction(
   _prevState: BagActionState,
   formData: FormData,
 ): Promise<BagActionState> {
-  const actor = await requireBagInfoAccess();
+  const actor = await requireSettingsAccess();
   const tenantId = actor.current_tenant.id;
   const cityId = String(formData.get("city_id") || "");
   const name = normalizeText(String(formData.get("name") || ""));
@@ -204,6 +216,20 @@ export async function createBagCourierAction(
   );
   const observation = normalizeText(String(formData.get("observation") || ""));
   const bagStatus = String(formData.get("bag_status") || "") as BagStatus;
+  let allowedStatuses: Set<BagStatus>;
+
+  try {
+    allowedStatuses = await getTenantAllowedBagStatuses(tenantId);
+  } catch (error) {
+    if (isCompanyAccessSchemaMissing(error as { message?: string })) {
+      return { status: "error", message: bagSchemaMessage };
+    }
+
+    return {
+      status: "error",
+      message: (error as { message?: string })?.message || "Nao foi possivel validar os status de BAG.",
+    };
+  }
 
   if (!partnerDeliveryId) {
     return { status: "error", message: "Informe o ID do entregador parceiro." };
@@ -362,6 +388,7 @@ export async function updateBagCourierStatus(formData: FormData) {
   const tenantId = actor.current_tenant.id;
   const id = String(formData.get("id") || "");
   const bagStatus = String(formData.get("bag_status") || "") as BagStatus;
+  const allowedStatuses = await getTenantAllowedBagStatuses(tenantId);
 
   if (!id || !allowedStatuses.has(bagStatus)) {
     throw new Error("Dados invalidos para atualizar o status do BAG.");
