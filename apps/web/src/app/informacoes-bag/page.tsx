@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 
 import { AppShell } from "@/components/app-shell";
-import { BagCourierForm } from "@/components/bag-courier-form";
 import { BagStatusForm } from "@/components/bag-status-form";
 import {
   BAG_SHIFT_LABELS,
@@ -128,6 +127,14 @@ type TrendPoint = {
   date: string;
   label: string;
   value: number;
+};
+
+type TrendBucket = {
+  key: string;
+  startDate: string;
+  endDate: string;
+  dates: string[];
+  label: string;
 };
 
 type RankingOrder = "melhor_pior" | "pior_melhor" | "mais_recente" | "mais_parado";
@@ -644,16 +651,6 @@ function getDateLabelShort(value: string) {
   }).format(new Date(`${value}T00:00:00Z`));
 }
 
-function buildDateRange(latestDate: string | null, days: number) {
-  if (!latestDate) {
-    return [];
-  }
-
-  return Array.from({ length: days }, (_, index) =>
-    subtractDaysFromIsoDate(latestDate, days - index - 1),
-  );
-}
-
 function buildDateRangeBetween(startDate: string | null, endDate: string | null) {
   if (!startDate || !endDate || startDate > endDate) {
     return [];
@@ -670,6 +667,47 @@ function buildDateRangeBetween(startDate: string | null, endDate: string | null)
   return dates;
 }
 
+function buildTrendBuckets(
+  dates: string[],
+  maxPoints = 14,
+): TrendBucket[] {
+  if (dates.length === 0) {
+    return [];
+  }
+
+  if (dates.length <= maxPoints) {
+    return dates.map((date) => ({
+      key: date,
+      startDate: date,
+      endDate: date,
+      dates: [date],
+      label: getDateLabelShort(date),
+    }));
+  }
+
+  const bucketSize = Math.ceil(dates.length / maxPoints);
+  const buckets: TrendBucket[] = [];
+
+  for (let index = 0; index < dates.length; index += bucketSize) {
+    const chunk = dates.slice(index, index + bucketSize);
+    const startDate = chunk[0];
+    const endDate = chunk.at(-1) || startDate;
+
+    buckets.push({
+      key: `${startDate}_${endDate}`,
+      startDate,
+      endDate,
+      dates: chunk,
+      label:
+        startDate === endDate
+          ? getDateLabelShort(startDate)
+          : `${getDateLabelShort(startDate)}-${getDateLabelShort(endDate)}`,
+    });
+  }
+
+  return buckets;
+}
+
 function getTrendValueMap(rows: DailyPerformanceRow[] | ShiftPerformanceRow[], metric: keyof Pick<DailyPerformanceRow & ShiftPerformanceRow, "tsh" | "ar" | "caa" | "overtime">) {
   return rows.reduce<Record<string, number[]>>((acc, row) => {
     const value = normalizePercentMetric(row[metric]);
@@ -684,26 +722,26 @@ function getTrendValueMap(rows: DailyPerformanceRow[] | ShiftPerformanceRow[], m
 }
 
 function buildDistinctCourierTrend(
-  dates: string[],
+  buckets: TrendBucket[],
   dailyRows: DailyPerformanceRow[],
   shiftRows: ShiftPerformanceRow[],
 ) {
-  return dates.map((date) => {
+  return buckets.map((bucket) => {
     const distinctCount = getDistinctPerformanceCourierCount([
-      ...dailyRows.filter((row) => row.data === date),
-      ...shiftRows.filter((row) => row.data === date),
+      ...dailyRows.filter((row) => bucket.dates.includes(row.data)),
+      ...shiftRows.filter((row) => bucket.dates.includes(row.data)),
     ]);
 
     return {
-      date,
-      label: getDateLabelShort(date),
+      date: bucket.key,
+      label: bucket.label,
       value: distinctCount,
     };
   });
 }
 
 function buildMetricTrend(
-  dates: string[],
+  buckets: TrendBucket[],
   dailyRows: DailyPerformanceRow[],
   shiftRows: ShiftPerformanceRow[],
   metric: "tsh" | "ar" | "caa" | "overtime",
@@ -711,15 +749,16 @@ function buildMetricTrend(
   const dailyValuesByDate = getTrendValueMap(dailyRows, metric);
   const shiftValuesByDate = getTrendValueMap(shiftRows, metric);
 
-  return dates.map((date) => {
-    const values =
-      (dailyValuesByDate[date] && dailyValuesByDate[date].length > 0
+  return buckets.map((bucket) => {
+    const values = bucket.dates.flatMap((date) =>
+      dailyValuesByDate[date] && dailyValuesByDate[date].length > 0
         ? dailyValuesByDate[date]
-        : shiftValuesByDate[date]) || [];
+        : shiftValuesByDate[date] || [],
+    );
 
     return {
-      date,
-      label: getDateLabelShort(date),
+      date: bucket.key,
+      label: bucket.label,
       value: averageNumbers(values) || 0,
     };
   });
@@ -1185,7 +1224,6 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
     (value) => normalizeSearchValue(value) === normalizeSearchValue(rawHotZone),
   ) || "";
   const last15Start = latestPerformanceDate ? subtractDaysFromIsoDate(latestPerformanceDate, 14) : null;
-  const recentDates = buildDateRangeBetween(selectedDashboardStart, selectedDashboardEnd);
   const dashboardDailyRows =
     selectedDashboardStart && selectedDashboardEnd
       ? dailyPerformanceRows.filter(
@@ -1198,6 +1236,17 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
           (row) => row.data >= selectedDashboardStart && row.data <= selectedDashboardEnd,
         )
       : shiftPerformanceRows;
+  const dashboardDatesWithData = Array.from(
+    new Set([
+      ...dashboardDailyRows.map((row) => row.data),
+      ...dashboardShiftRows.map((row) => row.data),
+    ]),
+  ).sort();
+  const dashboardTrendBuckets = buildTrendBuckets(
+    dashboardDatesWithData.length > 0
+      ? dashboardDatesWithData
+      : buildDateRangeBetween(selectedDashboardStart, selectedDashboardEnd),
+  );
   const performanceRowsOnLatestDate = latestPerformanceDate
     ? [
         ...dailyPerformanceRows.filter((row) => row.data === latestPerformanceDate),
@@ -1326,11 +1375,11 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
   const dashboardAttentionCount = dashboardCouriersWithInsights.filter(
     (item) => item.tier === "atencao" || item.tier === "parado",
   ).length;
-  const activityTrend = buildDistinctCourierTrend(recentDates, dashboardDailyRows, dashboardShiftRows);
-  const tshTrend = buildMetricTrend(recentDates, dashboardDailyRows, dashboardShiftRows, "tsh");
-  const arTrend = buildMetricTrend(recentDates, dashboardDailyRows, dashboardShiftRows, "ar");
-  const caaTrend = buildMetricTrend(recentDates, dashboardDailyRows, dashboardShiftRows, "caa");
-  const overtimeTrend = buildMetricTrend(recentDates, dashboardDailyRows, dashboardShiftRows, "overtime");
+  const activityTrend = buildDistinctCourierTrend(dashboardTrendBuckets, dashboardDailyRows, dashboardShiftRows);
+  const tshTrend = buildMetricTrend(dashboardTrendBuckets, dashboardDailyRows, dashboardShiftRows, "tsh");
+  const arTrend = buildMetricTrend(dashboardTrendBuckets, dashboardDailyRows, dashboardShiftRows, "ar");
+  const caaTrend = buildMetricTrend(dashboardTrendBuckets, dashboardDailyRows, dashboardShiftRows, "caa");
+  const overtimeTrend = buildMetricTrend(dashboardTrendBuckets, dashboardDailyRows, dashboardShiftRows, "overtime");
 
   return (
     <AppShell
@@ -1443,7 +1492,7 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
               <div className="panel-header">
                 <div>
                   <h2>Atividade da base</h2>
-                  <p>Entregadores por dia nos ultimos 14 dias</p>
+                  <p>Entregadores por dia no periodo selecionado</p>
                 </div>
               </div>
 
@@ -1588,6 +1637,19 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
                         .filter(Boolean)
                         .join(" · ")}
                 </p>
+              </div>
+              {citiesResult.data.length > 0 &&
+              regionsResult.data.length > 0 &&
+              operators.length > 0 &&
+              bagStatusesResult.data.length > 0 ? (
+                <Link href="/informacoes-bag/novo" className="primary-button link-button">
+                  Novo entregador
+                </Link>
+              ) : null}
+            </div>
+            <div className="panel-header">
+              <div>
+                <p>Filtre a base e monte a melhor shortlist por Hot Zone, turno e momento operacional.</p>
               </div>
               <form action="/informacoes-bag" method="get" className="courier-toolbar">
                 <input type="hidden" name="data_inicio" value={selectedDashboardStart} />
@@ -1766,32 +1828,6 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
               )}
             </div>
           </section>
-
-          {citiesResult.data.length > 0 &&
-          regionsResult.data.length > 0 &&
-          operators.length > 0 &&
-          bagStatusesResult.data.length > 0 ? (
-            <section className="panel">
-              <details className="bag-create-disclosure">
-                <summary className="bag-create-summary">
-                  <div>
-                    <h2>Cadastrar entregador</h2>
-                    <p>Abra este bloco somente quando precisar incluir um novo entregador na base.</p>
-                  </div>
-                  <span className="primary-button">Abrir cadastro</span>
-                </summary>
-
-                <div className="bag-create-content">
-                  <BagCourierForm
-                    cities={citiesResult.data}
-                    regions={regionsResult.data}
-                    operators={operators}
-                    statuses={bagStatusesResult.data}
-                  />
-                </div>
-              </details>
-            </section>
-          ) : null}
         </>
       )}
     </AppShell>
