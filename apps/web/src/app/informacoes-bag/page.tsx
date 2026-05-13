@@ -267,14 +267,68 @@ async function getBagCouriers(
 }
 
 function formatShiftLabels(values: BagShift[]) {
+  if (values.length === 0) {
+    return "Sem turnos definidos";
+  }
+
   return values.map((value) => BAG_SHIFT_LABELS[value]).join(" · ");
 }
 
 function formatWeekdayLabels(values: BagWeekday[]) {
+  if (values.length === 0) {
+    return "Sem dias definidos";
+  }
+
   return values.map((value) => BAG_WEEKDAY_LABELS[value]).join(" · ");
 }
 
-export default async function InformacoesBagPage() {
+function normalizeSearchValue(value: string | null | undefined) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function matchesCourierSearch(
+  courier: BagCourierView,
+  searchTerm: string,
+  bagStatusLabels: Record<string, string>,
+) {
+  if (!searchTerm) {
+    return true;
+  }
+
+  const searchableContent = [
+    courier.partner_delivery_id,
+    courier.full_name,
+    courier.phone_number,
+    courier.identity_number || "",
+    courier.city_name,
+    courier.operator_name,
+    courier.observation || "",
+    courier.bag_status,
+    bagStatusLabels[courier.bag_status] || "",
+    BAG_VEHICLE_LABELS[courier.delivery_vehicle] || "",
+    courier.regions.join(" "),
+    courier.preferred_shifts.map((value) => BAG_SHIFT_LABELS[value] || value).join(" "),
+    courier.preferred_weekdays.map((value) => BAG_WEEKDAY_LABELS[value] || value).join(" "),
+    courier.joined_telegram_group ? "telegram sim" : "telegram nao",
+  ]
+    .map((value) => normalizeSearchValue(value))
+    .join(" ");
+
+  return searchableContent.includes(searchTerm);
+}
+
+type InformacoesBagPageProps = {
+  searchParams?: Promise<{
+    busca?: string | string[];
+  }>;
+};
+
+export default async function InformacoesBagPage({ searchParams }: InformacoesBagPageProps) {
   const currentUser = await requireAppUser();
 
   if (!canAccessModule(currentUser, "bag_info")) {
@@ -299,12 +353,21 @@ export default async function InformacoesBagPage() {
   const bagStatusLabels = Object.fromEntries(
     bagStatusesResult.data.map((status) => [status.slug, status.label]),
   ) as Record<string, string>;
+  const resolvedSearchParams = (await searchParams) || {};
+  const rawSearch =
+    typeof resolvedSearchParams.busca === "string"
+      ? resolvedSearchParams.busca
+      : resolvedSearchParams.busca?.[0] || "";
+  const searchTerm = normalizeSearchValue(rawSearch);
+  const filteredCouriers = couriers.filter((courier) =>
+    matchesCourierSearch(courier, searchTerm, bagStatusLabels),
+  );
 
   return (
     <AppShell
       currentPath="/informacoes-bag"
-      title="Informacoes de BAG"
-      description="Consulte entregadores, acompanhe status do BAG e cadastre novos perfis pela plataforma."
+      title="Entregadores"
+      description="Consulte a base de entregadores, pesquise rapidamente e abra o cadastro apenas quando precisar incluir alguem novo."
       user={currentUser}
     >
       {!foundationReady ? (
@@ -337,7 +400,7 @@ export default async function InformacoesBagPage() {
               <div className="panel-header">
                 <div>
                   <h2>Configure o Perfil da empresa</h2>
-                  <p>Cadastre a primeira cidade no Perfil da empresa antes de criar entregadores no modulo BAG.</p>
+                  <p>Cadastre a primeira cidade no Perfil da empresa antes de usar o modulo de entregadores.</p>
                 </div>
                 <Link href="/perfil-empresa" className="secondary-button link-button">
                   Abrir Perfil da empresa
@@ -351,10 +414,7 @@ export default async function InformacoesBagPage() {
               <div className="panel-header">
                 <div>
                   <h2>Cadastre pelo menos uma Hot Zone</h2>
-                  <p>
-                    O entregador precisa informar qual Hot Zone deseja atuar antes de ser salvo no
-                    banco.
-                  </p>
+                  <p>O entregador precisa informar qual Hot Zone deseja atuar antes de ser salvo no banco.</p>
                 </div>
                 <Link href="/perfil-empresa" className="secondary-button link-button">
                   Abrir Perfil da empresa
@@ -391,37 +451,38 @@ export default async function InformacoesBagPage() {
             </section>
           ) : null}
 
-          {citiesResult.data.length > 0 &&
-          regionsResult.data.length > 0 &&
-          operators.length > 0 &&
-          bagStatusesResult.data.length > 0 ? (
-            <section className="panel">
-              <div className="panel-header">
-                <div>
-                  <h2>Novo entregador</h2>
-                  <p>Cadastre os novos entregadores que retiraram BAG ou ainda precisam retirar.</p>
-                </div>
-              </div>
-              <BagCourierForm
-                cities={citiesResult.data}
-                regions={regionsResult.data}
-                operators={operators}
-                statuses={bagStatusesResult.data}
-              />
-            </section>
-          ) : null}
-
           <section className="panel">
             <div className="panel-header">
               <div>
                 <h2>Entregadores cadastrados</h2>
-                <p>Consulte rapidamente se o entregador esta com BAG, precisa retirar ou ja foi desvinculado.</p>
+                <p>
+                  {searchTerm
+                    ? `Mostrando ${filteredCouriers.length} de ${couriers.length} entregadores para a busca atual.`
+                    : "Consulte rapidamente se o entregador esta com BAG, precisa retirar ou ja foi desvinculado."}
+                </p>
               </div>
+              <form action="/informacoes-bag" method="get" className="courier-toolbar">
+                <input
+                  type="search"
+                  name="busca"
+                  defaultValue={rawSearch}
+                  className="text-input courier-search-input"
+                  placeholder="Pesquisar por nome, ID, telefone, CPF, status, Hot Zone ou operador"
+                />
+                <button type="submit" className="secondary-button">
+                  Pesquisar
+                </button>
+                {rawSearch ? (
+                  <Link href="/informacoes-bag" className="link-button">
+                    Limpar
+                  </Link>
+                ) : null}
+              </form>
             </div>
 
             <div className="users-list">
-              {couriers.length > 0 ? (
-                couriers.map((courier) => (
+              {filteredCouriers.length > 0 ? (
+                filteredCouriers.map((courier) => (
                   <article key={courier.id} className="user-card user-card-stack">
                     <div>
                       <strong>
@@ -462,6 +523,13 @@ export default async function InformacoesBagPage() {
                     </div>
                   </article>
                 ))
+              ) : couriers.length > 0 ? (
+                <article className="user-card">
+                  <div>
+                    <strong>Nenhum entregador encontrado</strong>
+                    <p>Altere a busca para localizar por nome, ID, telefone, CPF, status, Hot Zone ou operador.</p>
+                  </div>
+                </article>
               ) : (
                 <article className="user-card">
                   <div>
@@ -472,6 +540,32 @@ export default async function InformacoesBagPage() {
               )}
             </div>
           </section>
+
+          {citiesResult.data.length > 0 &&
+          regionsResult.data.length > 0 &&
+          operators.length > 0 &&
+          bagStatusesResult.data.length > 0 ? (
+            <section className="panel">
+              <details className="bag-create-disclosure">
+                <summary className="bag-create-summary">
+                  <div>
+                    <h2>Cadastrar entregador</h2>
+                    <p>Abra este bloco somente quando precisar incluir um novo entregador na base.</p>
+                  </div>
+                  <span className="primary-button">Abrir cadastro</span>
+                </summary>
+
+                <div className="bag-create-content">
+                  <BagCourierForm
+                    cities={citiesResult.data}
+                    regions={regionsResult.data}
+                    operators={operators}
+                    statuses={bagStatusesResult.data}
+                  />
+                </div>
+              </details>
+            </section>
+          ) : null}
         </>
       )}
     </AppShell>

@@ -104,8 +104,8 @@ export default async function Home() {
           ) : null}
           {canAccessModule(currentUser, "bag_info") ? (
             <Link href="/informacoes-bag" className="module-card">
-              <strong>Informacoes de BAG</strong>
-              <p>Consulte entregadores, acompanhe retirada de BAG e cadastre novos perfis.</p>
+              <strong>Entregadores</strong>
+              <p>Consulte a base, filtre por qualquer dado, atualize status e abra o cadastro quando precisar.</p>
             </Link>
           ) : null}
           {hasCompanyPermission(currentUser, "edit_settings") ? (

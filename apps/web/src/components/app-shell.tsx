@@ -37,7 +37,7 @@ export function AppShell({ currentPath, title, description, user, children }: Ap
     },
     {
       href: "/informacoes-bag",
-      label: "Informacoes de BAG",
+      label: "Entregadores",
       visible: canAccessModule(user, "bag_info"),
     },
     {
