@@ -596,12 +596,50 @@ function getLatestPerformanceDate(rows: Array<{ data: string }>) {
   }, null);
 }
 
+function getPerformanceEntityKey(row: {
+  id_entregador: string | null;
+  cpf_entregador?: string | null;
+  numero_telefone?: string | null;
+  nome_entregador?: string | null;
+}) {
+  const idKey = normalizeCodeValue(row.id_entregador);
+
+  if (idKey) {
+    return `id:${idKey}`;
+  }
+
+  const cpfKey = normalizeDigits(row.cpf_entregador);
+
+  if (cpfKey) {
+    return `cpf:${cpfKey}`;
+  }
+
+  const phoneKey = normalizeDigits(row.numero_telefone);
+
+  if (phoneKey) {
+    return `phone:${phoneKey}`;
+  }
+
+  const nameKey = normalizeSearchValue(row.nome_entregador);
+
+  if (nameKey) {
+    return `name:${nameKey}`;
+  }
+
+  return "";
+}
+
 function getDistinctPerformanceCourierCount(
-  rows: Array<{ id_entregador: string | null }>,
+  rows: Array<{
+    id_entregador: string | null;
+    cpf_entregador?: string | null;
+    numero_telefone?: string | null;
+    nome_entregador?: string | null;
+  }>,
 ) {
   return new Set(
     rows
-      .map((row) => normalizeCodeValue(row.id_entregador))
+      .map((row) => getPerformanceEntityKey(row))
       .filter(Boolean),
   ).size;
 }
@@ -1647,11 +1685,12 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
                 </Link>
               ) : null}
             </div>
-            <div className="panel-header">
-              <div>
+            <section className="courier-filter-panel">
+              <div className="courier-filter-copy">
+                <strong>Busca e filtros operacionais</strong>
                 <p>Filtre a base e monte a melhor shortlist por Hot Zone, turno e momento operacional.</p>
               </div>
-              <form action="/informacoes-bag" method="get" className="courier-toolbar">
+              <form action="/informacoes-bag" method="get" className="courier-toolbar courier-toolbar-grid">
                 <input type="hidden" name="data_inicio" value={selectedDashboardStart} />
                 <input type="hidden" name="data_fim" value={selectedDashboardEnd} />
                 <input
@@ -1716,7 +1755,7 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
                   </Link>
                 ) : null}
               </form>
-            </div>
+            </section>
 
             <div className="users-list">
               {filteredCouriers.length > 0 ? (
