@@ -360,7 +360,10 @@ export async function createBagCourierAction(
 
     return {
       status: "error",
-      message: messageFromError(courierError, "Nao foi possivel cadastrar o entregador."),
+      message: messageFromError(
+        courierError,
+        "Esse entregador ja apareceu como cadastrado. Se ele entrou na lista, o cadastro foi salvo.",
+      ),
     };
   }
 

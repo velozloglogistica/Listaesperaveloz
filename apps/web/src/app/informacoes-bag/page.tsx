@@ -144,6 +144,13 @@ type CourierPerformanceSummary = {
   recommendation: string | null;
 };
 
+type CourierContextPerformanceView = {
+  kind: "hotzone" | "turno" | "pair";
+  hotZone: string | null;
+  turno: BagShift | null;
+  summary: CourierPerformanceSummary;
+};
+
 type TrendPoint = {
   date: string;
   label: string;
@@ -156,9 +163,7 @@ type BagCourierInsightView = BagCourierView & {
   performance: CourierPerformanceSummary;
   listPerformance: CourierPerformanceSummary;
   dashboardPerformance: CourierPerformanceSummary;
-  hasContextMatch: boolean;
-  matchesSelectedHotZone: boolean;
-  matchesSelectedTurno: boolean;
+  contextPerformances: CourierContextPerformanceView[];
 };
 
 type OperationalFilter =
@@ -1213,6 +1218,87 @@ function buildCourierPerformanceSummary(
   };
 }
 
+function buildCourierContextPerformances(
+  activityRows: ShiftPerformanceActivityRow[],
+  metricRows: ShiftPerformanceRow[],
+  latestPerformanceDate: string | null,
+): CourierContextPerformanceView[] {
+  const groupedEntries = new Map<
+    string,
+    {
+      kind: CourierContextPerformanceView["kind"];
+      hotZone: string | null;
+      turno: BagShift | null;
+      activityRows: Array<{ data: string }>;
+      metricRows: ShiftPerformanceRow[];
+    }
+  >();
+
+  const getGroup = (
+    kind: CourierContextPerformanceView["kind"],
+    hotZone: string | null,
+    turno: BagShift | null,
+  ) => {
+    const key = [kind, normalizeSearchValue(hotZone), turno || ""].join("|");
+    const existingGroup = groupedEntries.get(key);
+
+    if (existingGroup) {
+      return existingGroup;
+    }
+
+    const newGroup = {
+      kind,
+      hotZone,
+      turno,
+      activityRows: [] as Array<{ data: string }>,
+      metricRows: [] as ShiftPerformanceRow[],
+    };
+    groupedEntries.set(key, newGroup);
+    return newGroup;
+  };
+
+  for (const row of activityRows) {
+    const hotZone = String(row.hot_zone || "").replace(/\s+/g, " ").trim() || null;
+    const turno = getShiftKeyFromPerformancePeriod(row.periodo_turno);
+
+    if (hotZone) {
+      getGroup("hotzone", hotZone, null).activityRows.push({ data: row.data });
+    }
+
+    if (turno) {
+      getGroup("turno", null, turno).activityRows.push({ data: row.data });
+    }
+
+    if (hotZone && turno) {
+      getGroup("pair", hotZone, turno).activityRows.push({ data: row.data });
+    }
+  }
+
+  for (const row of metricRows) {
+    const hotZone = String(row.hot_zone || "").replace(/\s+/g, " ").trim() || null;
+    const turno = getShiftKeyFromPerformancePeriod(row.periodo_turno);
+
+    if (hotZone) {
+      getGroup("hotzone", hotZone, null).metricRows.push(row);
+    }
+
+    if (turno) {
+      getGroup("turno", null, turno).metricRows.push(row);
+    }
+
+    if (hotZone && turno) {
+      getGroup("pair", hotZone, turno).metricRows.push(row);
+    }
+  }
+
+  return Array.from(groupedEntries.values()).map((entry) => ({
+    kind: entry.kind,
+    hotZone: entry.hotZone,
+    turno: entry.turno,
+    summary: buildCourierPerformanceSummary(entry.activityRows, [], entry.metricRows, latestPerformanceDate),
+  }));
+}
+
 function matchesOperationalFilter(courier: BagCourierInsightView, filter: OperationalFilter) {
   const base = courier.listPerformance;
 
@@ -1432,8 +1518,6 @@ async function buildEntregadoresAnalytics(
   tenantId: string,
   selectedDashboardStart: string,
   selectedDashboardEnd: string,
-  selectedHotZone: string,
-  selectedTurno: BagShift | "",
 ): Promise<EntregadoresAnalyticsPayload> {
   const [
     couriersResult,
@@ -1525,9 +1609,6 @@ async function buildEntregadoresAnalytics(
   const shiftPerformanceActivityIndex = buildPerformanceIndex(shiftPerformanceActivityRows);
   const recentDailyPerformanceIndex = buildPerformanceIndex(recentDailyPerformanceRows);
   const recentShiftPerformanceIndex = buildPerformanceIndex(recentShiftPerformanceRows);
-  const hotZoneFilterActive = Boolean(selectedHotZone);
-  const turnoFilterActive = Boolean(selectedTurno);
-  const contextFilterActive = hotZoneFilterActive || turnoFilterActive;
   const couriersWithInsights = couriersResult.data.map((courier) => {
     const matchedDailyActivityRows = getMatchedPerformanceRows(
       courier,
@@ -1565,21 +1646,6 @@ async function buildEntregadoresAnalytics(
           row.numero_telefone || "",
         ].join("|"),
     );
-    const contextShiftRows = matchedShiftActivityRows.filter((row) => {
-      const hotZoneMatches =
-        !hotZoneFilterActive || normalizeSearchValue(row.hot_zone) === normalizeSearchValue(selectedHotZone);
-      const turnoMatches =
-        !turnoFilterActive || getShiftKeyFromPerformancePeriod(row.periodo_turno) === selectedTurno;
-      return hotZoneMatches && turnoMatches;
-    });
-    const matchesSelectedHotZone =
-      !hotZoneFilterActive ||
-      courier.regions.some((region) => normalizeSearchValue(region) === normalizeSearchValue(selectedHotZone)) ||
-      contextShiftRows.some((row) => normalizeSearchValue(row.hot_zone) === normalizeSearchValue(selectedHotZone));
-    const matchesSelectedTurno =
-      !turnoFilterActive ||
-      courier.preferred_shifts.includes(selectedTurno as BagShift) ||
-      contextShiftRows.some((row) => getShiftKeyFromPerformancePeriod(row.periodo_turno) === selectedTurno);
     const performanceActivityRows = [
       ...matchedDailyActivityRows,
       ...matchedShiftActivityRows.map((row) => ({ data: row.data })),
@@ -1590,22 +1656,12 @@ async function buildEntregadoresAnalytics(
       matchedShiftRows,
       latestPerformanceDate,
     );
-    const contextShiftMetricRows = matchedShiftRows.filter((row) => {
-      const hotZoneMatches =
-        !hotZoneFilterActive || normalizeSearchValue(row.hot_zone) === normalizeSearchValue(selectedHotZone);
-      const turnoMatches =
-        !turnoFilterActive || getShiftKeyFromPerformancePeriod(row.periodo_turno) === selectedTurno;
-      return hotZoneMatches && turnoMatches;
-    });
-    const listPerformance =
-      contextFilterActive
-        ? buildCourierPerformanceSummary(
-            contextShiftRows.map((row) => ({ data: row.data })),
-            [],
-            contextShiftMetricRows,
-            latestPerformanceDate,
-          )
-        : performance;
+    const contextPerformances = buildCourierContextPerformances(
+      matchedShiftActivityRows,
+      matchedShiftRows,
+      latestPerformanceDate,
+    );
+    const listPerformance = performance;
     const dashboardDailyActivityRowsForCourier = filterRowsByDateRange(
       matchedDailyActivityRows,
       selectedDashboardStart || null,
@@ -1641,9 +1697,7 @@ async function buildEntregadoresAnalytics(
       performance,
       listPerformance,
       dashboardPerformance,
-      hasContextMatch: contextShiftRows.length > 0,
-      matchesSelectedHotZone,
-      matchesSelectedTurno,
+      contextPerformances,
     };
   });
 
@@ -1681,8 +1735,6 @@ async function getCachedEntregadoresAnalytics(
   tenantId: string,
   selectedDashboardStart: string,
   selectedDashboardEnd: string,
-  selectedHotZone: string,
-  selectedTurno: BagShift | "",
 ) {
   return unstable_cache(
     async () =>
@@ -1690,11 +1742,9 @@ async function getCachedEntregadoresAnalytics(
         tenantId,
         selectedDashboardStart,
         selectedDashboardEnd,
-        selectedHotZone,
-        selectedTurno,
       ),
     [
-      `bag-info-analytics-${tenantId}-${selectedDashboardStart}-${selectedDashboardEnd}-${getCacheKeyPart(selectedHotZone)}-${selectedTurno || "all"}`,
+      `bag-info-analytics-${tenantId}-${selectedDashboardStart}-${selectedDashboardEnd}`,
     ],
     {
       revalidate: BAG_INFO_CACHE_SECONDS,
@@ -1783,7 +1833,6 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
   )
     ? (rawRankingOrder as RankingOrder)
     : "melhor_pior";
-  const searchTerm = normalizeSearchValue(rawSearch);
   const defaultDashboardStart = latestPerformanceDate ? subtractDaysFromIsoDate(latestPerformanceDate, 13) : "";
   const defaultDashboardEnd = latestPerformanceDate || "";
   const selectedDashboardStart =
@@ -1806,27 +1855,9 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
     tenantId,
     selectedDashboardStart,
     selectedDashboardEnd,
-    selectedHotZone,
-    selectedTurno,
   );
   const foundationReadyWithCouriers = foundationReady && analytics.foundationReady;
-  const hotZoneFilterActive = Boolean(selectedHotZone);
-  const turnoFilterActive = Boolean(selectedTurno);
-  const contextFilterActive = hotZoneFilterActive || turnoFilterActive;
   const couriersWithInsights = analytics.couriersWithInsights;
-  const filteredCouriers = sortCouriers(couriersWithInsights.filter((courier) => {
-    const matchesContextFilters =
-      (!hotZoneFilterActive || courier.matchesSelectedHotZone) &&
-      (!turnoFilterActive || courier.matchesSelectedTurno);
-    const matchesBagStatus = !selectedBagStatus || courier.bag_status === selectedBagStatus;
-
-    return (
-      matchesContextFilters &&
-      matchesBagStatus &&
-      matchesOperationalFilter(courier, operationalFilter) &&
-      matchesCourierSearch(courier, searchTerm, bagStatusLabels)
-    );
-  }), rankingOrder);
   const totalRegisteredCouriers = couriersWithInsights.length;
   const couriersRunningOnLatestDate = analytics.couriersRunningOnLatestDate;
   const couriersRunningLast15Days = analytics.couriersRunningLast15Days;
