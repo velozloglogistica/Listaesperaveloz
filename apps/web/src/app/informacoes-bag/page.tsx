@@ -4,6 +4,7 @@ import { unstable_cache } from "next/cache";
 
 import { AppShell } from "@/components/app-shell";
 import { BagStatusForm } from "@/components/bag-status-form";
+import { CourierPanelClient } from "@/components/courier-panel-client";
 import { TrendChartPanel } from "@/components/trend-chart-panel";
 import {
   BAG_SHIFT_LABELS,
@@ -2091,239 +2092,24 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
             </section>
           ) : null}
 
-          <section className="panel">
-            <div className="panel-header">
-              <div>
-                <h2>Painel de entregadores</h2>
-                <p>
-                  {searchTerm
-                    ? `Mostrando ${filteredCouriers.length} de ${couriersWithInsights.length} entregadores para a busca atual.`
-                    : [
-                        OPERATIONAL_FILTER_LABELS[operationalFilter],
-                        selectedBagStatus ? `Status BAG: ${bagStatusLabels[selectedBagStatus] || selectedBagStatus}` : "",
-                        selectedHotZone ? `Hot Zone: ${selectedHotZone}` : "",
-                        selectedTurno ? `Turno: ${BAG_SHIFT_LABELS[selectedTurno as BagShift]}` : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                </p>
-              </div>
-              {citiesResult.data.length > 0 &&
+          <CourierPanelClient
+            couriers={couriersWithInsights}
+            bagStatuses={bagStatusesResult.data}
+            bagStatusLabels={bagStatusLabels}
+            availableHotZones={availableHotZones}
+            initialSearch={rawSearch}
+            initialBagStatus={selectedBagStatus}
+            initialHotZone={selectedHotZone}
+            initialTurno={selectedTurno}
+            initialOperationalFilter={operationalFilter}
+            initialRankingOrder={rankingOrder}
+            createEnabled={
+              citiesResult.data.length > 0 &&
               regionsResult.data.length > 0 &&
               operators.length > 0 &&
-              bagStatusesResult.data.length > 0 ? (
-                <Link href="/informacoes-bag/novo" className="primary-button link-button">
-                  Novo entregador
-                </Link>
-              ) : null}
-            </div>
-            <section className="courier-filter-panel">
-              <div className="courier-filter-copy">
-                <strong>Busca e filtros operacionais</strong>
-                <p>Filtre a base e monte a melhor shortlist por Hot Zone, turno e momento operacional.</p>
-              </div>
-              <form action="/informacoes-bag" method="get" className="courier-toolbar courier-toolbar-stack">
-                <input type="hidden" name="data_inicio" value={selectedDashboardStart} />
-                <input type="hidden" name="data_fim" value={selectedDashboardEnd} />
-                <div className="courier-toolbar-row courier-toolbar-row-primary">
-                  <input
-                    type="search"
-                    name="busca"
-                    defaultValue={rawSearch}
-                    className="text-input courier-search-input courier-filter-control"
-                    placeholder="Pesquisar por nome, ID, telefone, CPF, status, Hot Zone ou operador"
-                  />
-                  <select
-                    name="status_bag"
-                    defaultValue={selectedBagStatus}
-                    className="select-input courier-filter-select courier-filter-control"
-                  >
-                    <option value="">Todos os status BAG</option>
-                    {bagStatusesResult.data.map((status) => (
-                      <option key={status.id} value={status.slug}>
-                        {status.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="courier-toolbar-row courier-toolbar-row-secondary">
-                  <select
-                    name="hotzone"
-                    defaultValue={selectedHotZone}
-                    className="select-input courier-filter-select courier-filter-control"
-                  >
-                    <option value="">Todas as Hot Zones</option>
-                    {availableHotZones.map((hotZone) => (
-                      <option key={hotZone} value={hotZone}>
-                        {hotZone}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    name="turno"
-                    defaultValue={selectedTurno}
-                    className="select-input courier-filter-select courier-filter-control"
-                  >
-                    <option value="">Todos os turnos</option>
-                    {(Object.keys(BAG_SHIFT_LABELS) as BagShift[]).map((shift) => (
-                      <option key={shift} value={shift}>
-                        {BAG_SHIFT_LABELS[shift]}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    name="situacao"
-                    defaultValue={operationalFilter}
-                    className="select-input courier-filter-select courier-filter-control"
-                  >
-                    {(Object.keys(OPERATIONAL_FILTER_LABELS) as OperationalFilter[]).map((filterKey) => (
-                      <option key={filterKey} value={filterKey}>
-                        {OPERATIONAL_FILTER_LABELS[filterKey]}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="courier-toolbar-row courier-toolbar-row-tertiary">
-                  <select
-                    name="ordenacao"
-                    defaultValue={rankingOrder}
-                    className="select-input courier-filter-select courier-filter-control"
-                  >
-                    {(Object.keys(RANKING_ORDER_LABELS) as RankingOrder[]).map((orderKey) => (
-                      <option key={orderKey} value={orderKey}>
-                        {RANKING_ORDER_LABELS[orderKey]}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="courier-toolbar-actions">
-                    <button type="submit" className="primary-button">
-                      Filtrar
-                    </button>
-                    {rawSearch ||
-                    selectedBagStatus ||
-                    operationalFilter !== "todos" ||
-                    selectedHotZone ||
-                    selectedTurno ||
-                    rankingOrder !== "melhor_pior" ? (
-                      <Link href="/informacoes-bag" className="secondary-button link-button courier-reset-button">
-                        Limpar
-                      </Link>
-                    ) : null}
-                  </div>
-                </div>
-              </form>
-            </section>
-
-            <div className="users-list">
-              {filteredCouriers.length > 0 ? (
-                filteredCouriers.map((courier) => (
-                  <article key={courier.id} className="user-card user-card-stack">
-                    <div>
-                      <strong>
-                        {courier.full_name} · ID {courier.partner_delivery_id}
-                      </strong>
-                      <p>Telefone: {courier.phone_number}</p>
-                      <p>Cidade: {courier.city_name}</p>
-                      <p>Hot Zones: {courier.regions.join(" · ") || "Sem Hot Zone definida"}</p>
-                      <p>Turnos: {formatShiftLabels(courier.preferred_shifts)}</p>
-                      <p>Dias: {formatWeekdayLabels(courier.preferred_weekdays)}</p>
-                      <p>Veiculo: {BAG_VEHICLE_LABELS[courier.delivery_vehicle]}</p>
-                      <p>Operador: {courier.operator_name}</p>
-                      <p>Telegram: {courier.joined_telegram_group ? "Sim" : "Nao"}</p>
-                      <p>Identidade: {courier.identity_number || "Nao informada"}</p>
-                      <p>Observacao: {courier.observation || "Sem observacoes"}</p>
-                      {contextFilterActive ? (
-                        <p className="courier-context-note">
-                          Contexto atual:{" "}
-                          {selectedHotZone ? `Hot Zone ${selectedHotZone}` : "todas as Hot Zones"} /{" "}
-                          {selectedTurno ? BAG_SHIFT_LABELS[selectedTurno as BagShift] : "todos os turnos"}
-                        </p>
-                      ) : null}
-                      <div className="courier-performance-grid">
-                        <span className="courier-performance-stat">
-                          <strong>Ultima rodada</strong>
-                          <span>{formatDateLabel(courier.listPerformance.lastRunDate)}</span>
-                        </span>
-                        <span className="courier-performance-stat">
-                          <strong>Dias ativos 30d</strong>
-                          <span>{courier.listPerformance.activeDaysLast30}</span>
-                        </span>
-                        <span className="courier-performance-stat">
-                          <strong>Pedidos 30d</strong>
-                          <span>{courier.listPerformance.totalOrdersLast30}</span>
-                        </span>
-                        <span className="courier-performance-stat">
-                          <strong>TSH</strong>
-                          <span>{formatMetricLabel(courier.listPerformance.avgTsh)}</span>
-                        </span>
-                        <span className="courier-performance-stat">
-                          <strong>AR</strong>
-                          <span>{formatMetricLabel(courier.listPerformance.avgAr)}</span>
-                        </span>
-                        <span className="courier-performance-stat">
-                          <strong>CAA</strong>
-                          <span>{formatMetricLabel(courier.listPerformance.avgCaa, { reverse: true })}</span>
-                        </span>
-                        <span className="courier-performance-stat">
-                          <strong>Overtime</strong>
-                          <span>{formatMetricLabel(courier.listPerformance.avgOvertime, { reverse: true })}</span>
-                        </span>
-                        <span className="courier-performance-stat">
-                          <strong>TSH critico</strong>
-                          <span>{formatMetricLabel(courier.listPerformance.avgTshCritical)}</span>
-                        </span>
-                      </div>
-                      <p className="courier-highlight">
-                        <strong>Melhor encaixe:</strong>{" "}
-                        {courier.listPerformance.recommendation}
-                      </p>
-                      {courier.whatsapp_web_link ? (
-                        <p>
-                          <a
-                            href={courier.whatsapp_web_link}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="secondary-button link-button"
-                          >
-                            Abrir WhatsApp Web
-                          </a>
-                        </p>
-                      ) : null}
-                    </div>
-                    <div className="user-card-meta">
-                      <span
-                        className={`day-chip ${PERFORMANCE_TIER_CLASS_NAMES[courier.listPerformance.tier]}`}
-                      >
-                        {PERFORMANCE_TIER_LABELS[courier.listPerformance.tier]}
-                      </span>
-                      <span className="day-chip">
-                        {bagStatusLabels[courier.bag_status] || courier.bag_status}
-                      </span>
-                      <BagStatusForm
-                        id={courier.id}
-                        currentStatus={courier.bag_status}
-                        statuses={bagStatusesResult.data}
-                      />
-                    </div>
-                  </article>
-                ))
-              ) : couriersWithInsights.length > 0 ? (
-                <article className="user-card">
-                  <div>
-                    <strong>Nenhum entregador encontrado</strong>
-                    <p>Altere a busca ou o filtro para localizar por nome, ID, telefone, CPF, status, Hot Zone, operador ou situacao operacional.</p>
-                  </div>
-                </article>
-              ) : (
-                <article className="user-card">
-                  <div>
-                    <strong>Nenhum entregador cadastrado</strong>
-                    <p>Depois da carga inicial no banco, os novos cadastros passam a ser feitos por aqui.</p>
-                  </div>
-                </article>
-              )}
-            </div>
-          </section>
+              bagStatusesResult.data.length > 0
+            }
+          />
         </>
       )}
     </AppShell>
