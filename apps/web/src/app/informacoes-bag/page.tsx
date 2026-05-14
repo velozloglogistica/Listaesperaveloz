@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { AppShell } from "@/components/app-shell";
 import { BagStatusForm } from "@/components/bag-status-form";
+import { TrendChartPanel } from "@/components/trend-chart-panel";
 import {
   BAG_SHIFT_LABELS,
   BAG_WEEKDAY_LABELS,
@@ -127,14 +128,6 @@ type TrendPoint = {
   date: string;
   label: string;
   value: number;
-};
-
-type TrendBucket = {
-  key: string;
-  startDate: string;
-  endDate: string;
-  dates: string[];
-  label: string;
 };
 
 type RankingOrder = "melhor_pior" | "pior_melhor" | "mais_recente" | "mais_parado";
@@ -724,47 +717,6 @@ function buildDateRangeBetween(startDate: string | null, endDate: string | null)
   return dates;
 }
 
-function buildTrendBuckets(
-  dates: string[],
-  maxPoints = 14,
-): TrendBucket[] {
-  if (dates.length === 0) {
-    return [];
-  }
-
-  if (dates.length <= maxPoints) {
-    return dates.map((date) => ({
-      key: date,
-      startDate: date,
-      endDate: date,
-      dates: [date],
-      label: getDateLabelShort(date),
-    }));
-  }
-
-  const bucketSize = Math.ceil(dates.length / maxPoints);
-  const buckets: TrendBucket[] = [];
-
-  for (let index = 0; index < dates.length; index += bucketSize) {
-    const chunk = dates.slice(index, index + bucketSize);
-    const startDate = chunk[0];
-    const endDate = chunk.at(-1) || startDate;
-
-    buckets.push({
-      key: `${startDate}_${endDate}`,
-      startDate,
-      endDate,
-      dates: chunk,
-      label:
-        startDate === endDate
-          ? getDateLabelShort(startDate)
-          : `${getDateLabelShort(startDate)}-${getDateLabelShort(endDate)}`,
-    });
-  }
-
-  return buckets;
-}
-
 function getTrendValueMap(rows: DailyPerformanceRow[] | ShiftPerformanceRow[], metric: keyof Pick<DailyPerformanceRow & ShiftPerformanceRow, "tsh" | "ar" | "caa" | "overtime">) {
   return rows.reduce<Record<string, number[]>>((acc, row) => {
     const value = normalizePercentMetric(row[metric]);
@@ -779,26 +731,26 @@ function getTrendValueMap(rows: DailyPerformanceRow[] | ShiftPerformanceRow[], m
 }
 
 function buildDistinctCourierTrend(
-  buckets: TrendBucket[],
+  dates: string[],
   dailyRows: DailyPerformanceRow[],
   shiftRows: ShiftPerformanceRow[],
 ) {
-  return buckets.map((bucket) => {
+  return dates.map((date) => {
     const distinctCount = getDistinctPerformanceCourierCount([
-      ...dailyRows.filter((row) => bucket.dates.includes(row.data)),
-      ...shiftRows.filter((row) => bucket.dates.includes(row.data)),
+      ...dailyRows.filter((row) => row.data === date),
+      ...shiftRows.filter((row) => row.data === date),
     ]);
 
     return {
-      date: bucket.key,
-      label: bucket.label,
+      date,
+      label: getDateLabelShort(date),
       value: distinctCount,
     };
   });
 }
 
 function buildMetricTrend(
-  buckets: TrendBucket[],
+  dates: string[],
   dailyRows: DailyPerformanceRow[],
   shiftRows: ShiftPerformanceRow[],
   metric: "tsh" | "ar" | "caa" | "overtime",
@@ -806,63 +758,18 @@ function buildMetricTrend(
   const dailyValuesByDate = getTrendValueMap(dailyRows, metric);
   const shiftValuesByDate = getTrendValueMap(shiftRows, metric);
 
-  return buckets.map((bucket) => {
-    const values = bucket.dates.flatMap((date) =>
-      dailyValuesByDate[date] && dailyValuesByDate[date].length > 0
+  return dates.map((date) => {
+    const values =
+      (dailyValuesByDate[date] && dailyValuesByDate[date].length > 0
         ? dailyValuesByDate[date]
-        : shiftValuesByDate[date] || [],
-    );
+        : shiftValuesByDate[date]) || [];
 
     return {
-      date: bucket.key,
-      label: bucket.label,
+      date,
+      label: getDateLabelShort(date),
       value: averageNumbers(values) || 0,
     };
   });
-}
-
-function buildSparklinePath(points: TrendPoint[], width = 240, height = 72) {
-  if (points.length === 0) {
-    return "";
-  }
-
-  const values = points.map((point) => point.value);
-  const minValue = Math.min(...values);
-  const maxValue = Math.max(...values);
-  const range = maxValue - minValue || 1;
-
-  return points
-    .map((point, index) => {
-      const x = points.length === 1 ? width / 2 : (index / (points.length - 1)) * width;
-      const y = height - ((point.value - minValue) / range) * (height - 8) - 4;
-      return `${index === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
-    })
-    .join(" ");
-}
-
-function renderSparkline(points: TrendPoint[], className: string) {
-  if (points.length === 0) {
-    return <div className={`sparkline-empty ${className}`}>Sem dados</div>;
-  }
-
-  return (
-    <svg viewBox="0 0 240 72" className={`sparkline ${className}`} preserveAspectRatio="none" aria-hidden="true">
-      <path d={buildSparklinePath(points)} />
-    </svg>
-  );
-}
-
-function renderTrendValues(
-  points: TrendPoint[],
-  formatter: (value: number) => string,
-) {
-  return (
-    <div className="trend-values">
-      {points.map((point) => (
-        <span key={point.date}>{formatter(point.value)}</span>
-      ))}
-    </div>
-  );
 }
 
 function getMostFrequentLabel(values: string[]) {
@@ -1307,11 +1214,10 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
       ...dashboardShiftRows.map((row) => row.data),
     ]),
   ).sort();
-  const dashboardTrendBuckets = buildTrendBuckets(
+  const dashboardTrendDates =
     dashboardDatesWithData.length > 0
       ? dashboardDatesWithData
-      : buildDateRangeBetween(selectedDashboardStart, selectedDashboardEnd),
-  );
+      : buildDateRangeBetween(selectedDashboardStart, selectedDashboardEnd);
   const performanceRowsOnLatestDate = latestPerformanceDate
     ? [
         ...dailyPerformanceRows.filter((row) => row.data === latestPerformanceDate),
@@ -1446,11 +1352,11 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
     ...status,
     count: couriersWithInsights.filter((courier) => courier.bag_status === status.slug).length,
   }));
-  const activityTrend = buildDistinctCourierTrend(dashboardTrendBuckets, dashboardDailyRows, dashboardShiftRows);
-  const tshTrend = buildMetricTrend(dashboardTrendBuckets, dashboardDailyRows, dashboardShiftRows, "tsh");
-  const arTrend = buildMetricTrend(dashboardTrendBuckets, dashboardDailyRows, dashboardShiftRows, "ar");
-  const caaTrend = buildMetricTrend(dashboardTrendBuckets, dashboardDailyRows, dashboardShiftRows, "caa");
-  const overtimeTrend = buildMetricTrend(dashboardTrendBuckets, dashboardDailyRows, dashboardShiftRows, "overtime");
+  const activityTrend = buildDistinctCourierTrend(dashboardTrendDates, dashboardDailyRows, dashboardShiftRows);
+  const tshTrend = buildMetricTrend(dashboardTrendDates, dashboardDailyRows, dashboardShiftRows, "tsh");
+  const arTrend = buildMetricTrend(dashboardTrendDates, dashboardDailyRows, dashboardShiftRows, "ar");
+  const caaTrend = buildMetricTrend(dashboardTrendDates, dashboardDailyRows, dashboardShiftRows, "caa");
+  const overtimeTrend = buildMetricTrend(dashboardTrendDates, dashboardDailyRows, dashboardShiftRows, "overtime");
 
   return (
     <AppShell
@@ -1569,30 +1475,16 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
             </section>
 
             <section className="panel">
-              <div className="panel-header">
-                <div>
-                  <h2>Atividade da base</h2>
-                  <p>Entregadores por dia no periodo selecionado</p>
-                </div>
-              </div>
-
-              <div className="trend-hero">
-                <div>
-                  <p className="trend-eyebrow">Entregadores rodando</p>
-                  <strong className="trend-value">{activityTrend.at(-1)?.value || 0}</strong>
-                  <p className="trend-caption">
-                    Pico recente de {Math.max(...activityTrend.map((point) => point.value), 0)} entregadores no periodo.
-                  </p>
-                </div>
-                {renderSparkline(activityTrend, "sparkline-activity")}
-              </div>
-              {renderTrendValues(activityTrend, (value) => `${Math.round(value)}`)}
-
-              <div className="trend-axis">
-                {activityTrend.map((point) => (
-                  <span key={point.date}>{point.label}</span>
-                ))}
-              </div>
+              <TrendChartPanel
+                title="Atividade da base"
+                description="Entregadores por dia no periodo selecionado"
+                eyebrow="Entregadores rodando"
+                value={activityTrend.at(-1)?.value || 0}
+                caption={`Pico recente de ${Math.max(...activityTrend.map((point) => point.value), 0)} entregadores no periodo.`}
+                points={activityTrend}
+                toneClass="sparkline-activity"
+                format="integer"
+              />
             </section>
           </section>
 
@@ -1628,20 +1520,15 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
               },
             ].map((metric) => (
               <article key={metric.title} className="metric-trend-card">
-                <div className="metric-trend-header">
-                  <div>
-                    <p className="trend-eyebrow">{metric.title}</p>
-                    <strong className="metric-trend-value">{metric.value.toFixed(1)}%</strong>
-                  </div>
-                  <span className="metric-trend-subtitle">{metric.subtitle}</span>
-                </div>
-                {renderSparkline(metric.points, metric.className)}
-                {renderTrendValues(metric.points, (value) => `${value.toFixed(1)}%`)}
-                <div className="trend-axis">
-                  {metric.points.map((point) => (
-                    <span key={point.date}>{point.label}</span>
-                  ))}
-                </div>
+                <TrendChartPanel
+                  eyebrow={metric.title}
+                  value={metric.value}
+                  subtitle={metric.subtitle}
+                  points={metric.points}
+                  toneClass={metric.className}
+                  format="percent"
+                  compact
+                />
               </article>
             ))}
           </section>
