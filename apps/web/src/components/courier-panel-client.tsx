@@ -76,6 +76,15 @@ type BagStatusOption = {
   label: string;
 };
 
+type PanelFilters = {
+  search: string;
+  bagStatus: string;
+  hotZone: string;
+  turno: BagShift | "";
+  operationalFilter: OperationalFilter;
+  rankingOrder: RankingOrder;
+};
+
 type CourierPanelClientProps = {
   couriers: BagCourierInsightView[];
   bagStatuses: BagStatusOption[];
@@ -361,38 +370,76 @@ export function CourierPanelClient({
   initialRankingOrder,
   createEnabled,
 }: CourierPanelClientProps) {
-  const [search, setSearch] = useState(initialSearch);
-  const [bagStatus, setBagStatus] = useState(initialBagStatus);
-  const [hotZone, setHotZone] = useState(initialHotZone);
-  const [turno, setTurno] = useState<BagShift | "">(initialTurno);
-  const [operationalFilter, setOperationalFilter] = useState<OperationalFilter>(initialOperationalFilter);
-  const [rankingOrder, setRankingOrder] = useState<RankingOrder>(initialRankingOrder);
-  const [visibleCount, setVisibleCount] = useState(COURIERS_PAGE_SIZE);
+  const initialFilters = useMemo<PanelFilters>(
+    () => ({
+      search: initialSearch,
+      bagStatus: initialBagStatus,
+      hotZone: initialHotZone,
+      turno: initialTurno,
+      operationalFilter: initialOperationalFilter,
+      rankingOrder: initialRankingOrder,
+    }),
+    [
+      initialBagStatus,
+      initialHotZone,
+      initialOperationalFilter,
+      initialRankingOrder,
+      initialSearch,
+      initialTurno,
+    ],
+  );
+  const defaultFilters = useMemo<PanelFilters>(
+    () => ({
+      search: "",
+      bagStatus: "",
+      hotZone: "",
+      turno: "",
+      operationalFilter: "todos",
+      rankingOrder: "melhor_pior",
+    }),
+    [],
+  );
 
-  const searchTerm = useMemo(() => normalizeSearchValue(search), [search]);
-  const contextFilterActive = Boolean(hotZone) || Boolean(turno);
+  const [draftFilters, setDraftFilters] = useState<PanelFilters>(initialFilters);
+  const [appliedFilters, setAppliedFilters] = useState<PanelFilters>(initialFilters);
+  const [visibleCount, setVisibleCount] = useState(COURIERS_PAGE_SIZE);
+  const [isApplyingFilters, setIsApplyingFilters] = useState(false);
+
+  const searchTerm = useMemo(
+    () => normalizeSearchValue(appliedFilters.search),
+    [appliedFilters.search],
+  );
+  const contextFilterActive = Boolean(appliedFilters.hotZone) || Boolean(appliedFilters.turno);
+  const hasPendingChanges =
+    draftFilters.search !== appliedFilters.search ||
+    draftFilters.bagStatus !== appliedFilters.bagStatus ||
+    draftFilters.hotZone !== appliedFilters.hotZone ||
+    draftFilters.turno !== appliedFilters.turno ||
+    draftFilters.operationalFilter !== appliedFilters.operationalFilter ||
+    draftFilters.rankingOrder !== appliedFilters.rankingOrder;
 
   const filteredCouriers = useMemo(() => {
     const filtered = couriers.filter((courier) => {
       const matchesContextFilters =
-        (!hotZone || courier.matchesSelectedHotZone) &&
-        (!turno || courier.matchesSelectedTurno);
-      const matchesBagStatus = !bagStatus || courier.bag_status === bagStatus;
+        (!appliedFilters.hotZone || courier.matchesSelectedHotZone) &&
+        (!appliedFilters.turno || courier.matchesSelectedTurno);
+      const matchesBagStatus =
+        !appliedFilters.bagStatus || courier.bag_status === appliedFilters.bagStatus;
 
       return (
         matchesContextFilters &&
         matchesBagStatus &&
-        matchesOperationalFilter(courier, operationalFilter) &&
+        matchesOperationalFilter(courier, appliedFilters.operationalFilter) &&
         matchesCourierSearch(courier, searchTerm, bagStatusLabels)
       );
     });
 
-    return sortCouriers(filtered, rankingOrder);
-  }, [bagStatus, bagStatusLabels, couriers, hotZone, operationalFilter, rankingOrder, searchTerm, turno]);
+    return sortCouriers(filtered, appliedFilters.rankingOrder);
+  }, [appliedFilters, bagStatusLabels, couriers, searchTerm]);
 
   useEffect(() => {
     setVisibleCount(COURIERS_PAGE_SIZE);
-  }, [searchTerm, bagStatus, hotZone, turno, operationalFilter, rankingOrder]);
+  }, [appliedFilters]);
 
   const visibleCouriers = useMemo(
     () => filteredCouriers.slice(0, visibleCount),
@@ -404,40 +451,55 @@ export function CourierPanelClient({
   const summaryText = searchTerm
     ? `Mostrando ${filteredCouriers.length} de ${couriers.length} entregadores para a busca atual.`
     : [
-        OPERATIONAL_FILTER_LABELS[operationalFilter],
-        bagStatus ? `Status BAG: ${bagStatusLabels[bagStatus] || bagStatus}` : "",
-        hotZone ? `Hot Zone: ${hotZone}` : "",
-        turno ? `Turno: ${BAG_SHIFT_LABELS[turno]}` : "",
+        OPERATIONAL_FILTER_LABELS[appliedFilters.operationalFilter],
+        appliedFilters.bagStatus
+          ? `Status BAG: ${bagStatusLabels[appliedFilters.bagStatus] || appliedFilters.bagStatus}`
+          : "",
+        appliedFilters.hotZone ? `Hot Zone: ${appliedFilters.hotZone}` : "",
+        appliedFilters.turno ? `Turno: ${BAG_SHIFT_LABELS[appliedFilters.turno]}` : "",
       ]
         .filter(Boolean)
         .join(" · ");
 
   const applyFilters = () => {
-    updatePanelQuery({
-      busca: search,
-      status_bag: bagStatus,
-      hotzone: hotZone,
-      turno,
-      situacao: operationalFilter,
-      ordenacao: rankingOrder,
-    });
+    if (!hasPendingChanges) {
+      return;
+    }
+
+    setIsApplyingFilters(true);
+
+    window.setTimeout(() => {
+      setAppliedFilters(draftFilters);
+      setVisibleCount(COURIERS_PAGE_SIZE);
+      updatePanelQuery({
+        busca: draftFilters.search,
+        status_bag: draftFilters.bagStatus,
+        hotzone: draftFilters.hotZone,
+        turno: draftFilters.turno,
+        situacao: draftFilters.operationalFilter,
+        ordenacao: draftFilters.rankingOrder,
+      });
+      setIsApplyingFilters(false);
+    }, 120);
   };
 
   const resetFilters = () => {
-    setSearch("");
-    setBagStatus("");
-    setHotZone("");
-    setTurno("");
-    setOperationalFilter("todos");
-    setRankingOrder("melhor_pior");
-    updatePanelQuery({
-      busca: "",
-      status_bag: "",
-      hotzone: "",
-      turno: "",
-      situacao: "todos",
-      ordenacao: "melhor_pior",
-    });
+    setIsApplyingFilters(true);
+
+    window.setTimeout(() => {
+      setDraftFilters(defaultFilters);
+      setAppliedFilters(defaultFilters);
+      setVisibleCount(COURIERS_PAGE_SIZE);
+      updatePanelQuery({
+        busca: "",
+        status_bag: "",
+        hotzone: "",
+        turno: "",
+        situacao: "todos",
+        ordenacao: "melhor_pior",
+      });
+      setIsApplyingFilters(false);
+    }, 120);
   };
 
   return (
@@ -446,6 +508,12 @@ export function CourierPanelClient({
         <div>
           <h2>Painel de entregadores</h2>
           <p>{summaryText}</p>
+          {isApplyingFilters ? <span className="courier-filter-status">Aplicando filtros...</span> : null}
+          {!isApplyingFilters && hasPendingChanges ? (
+            <span className="courier-filter-status courier-filter-status-pending">
+              Existem alteracoes nao aplicadas.
+            </span>
+          ) : null}
         </div>
         {createEnabled ? (
           <Link href="/informacoes-bag/novo" className="primary-button link-button">
@@ -463,15 +531,25 @@ export function CourierPanelClient({
             <input
               type="search"
               name="busca"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              value={draftFilters.search}
+              onChange={(event) =>
+                setDraftFilters((currentValue) => ({
+                  ...currentValue,
+                  search: event.target.value,
+                }))
+              }
               className="text-input courier-search-input courier-filter-control"
               placeholder="Pesquisar por nome, ID, telefone, CPF, status, Hot Zone ou operador"
             />
             <select
               name="status_bag"
-              value={bagStatus}
-              onChange={(event) => setBagStatus(event.target.value)}
+              value={draftFilters.bagStatus}
+              onChange={(event) =>
+                setDraftFilters((currentValue) => ({
+                  ...currentValue,
+                  bagStatus: event.target.value,
+                }))
+              }
               className="select-input courier-filter-select courier-filter-control"
             >
               <option value="">Todos os status BAG</option>
@@ -485,8 +563,13 @@ export function CourierPanelClient({
           <div className="courier-toolbar-row courier-toolbar-row-secondary">
             <select
               name="hotzone"
-              value={hotZone}
-              onChange={(event) => setHotZone(event.target.value)}
+              value={draftFilters.hotZone}
+              onChange={(event) =>
+                setDraftFilters((currentValue) => ({
+                  ...currentValue,
+                  hotZone: event.target.value,
+                }))
+              }
               className="select-input courier-filter-select courier-filter-control"
             >
               <option value="">Todas as Hot Zones</option>
@@ -498,8 +581,13 @@ export function CourierPanelClient({
             </select>
             <select
               name="turno"
-              value={turno}
-              onChange={(event) => setTurno(event.target.value as BagShift | "")}
+              value={draftFilters.turno}
+              onChange={(event) =>
+                setDraftFilters((currentValue) => ({
+                  ...currentValue,
+                  turno: event.target.value as BagShift | "",
+                }))
+              }
               className="select-input courier-filter-select courier-filter-control"
             >
               <option value="">Todos os turnos</option>
@@ -511,8 +599,13 @@ export function CourierPanelClient({
             </select>
             <select
               name="situacao"
-              value={operationalFilter}
-              onChange={(event) => setOperationalFilter(event.target.value as OperationalFilter)}
+              value={draftFilters.operationalFilter}
+              onChange={(event) =>
+                setDraftFilters((currentValue) => ({
+                  ...currentValue,
+                  operationalFilter: event.target.value as OperationalFilter,
+                }))
+              }
               className="select-input courier-filter-select courier-filter-control"
             >
               {(Object.keys(OPERATIONAL_FILTER_LABELS) as OperationalFilter[]).map((filterKey) => (
@@ -525,8 +618,13 @@ export function CourierPanelClient({
           <div className="courier-toolbar-row courier-toolbar-row-tertiary">
             <select
               name="ordenacao"
-              value={rankingOrder}
-              onChange={(event) => setRankingOrder(event.target.value as RankingOrder)}
+              value={draftFilters.rankingOrder}
+              onChange={(event) =>
+                setDraftFilters((currentValue) => ({
+                  ...currentValue,
+                  rankingOrder: event.target.value as RankingOrder,
+                }))
+              }
               className="select-input courier-filter-select courier-filter-control"
             >
               {(Object.keys(RANKING_ORDER_LABELS) as RankingOrder[]).map((orderKey) => (
@@ -537,16 +635,16 @@ export function CourierPanelClient({
             </select>
             <div className="courier-toolbar-actions">
               <button type="button" className="primary-button" onClick={applyFilters}>
-                Filtrar
+                {isApplyingFilters ? "Carregando..." : "Filtrar"}
               </button>
-              {search ||
-              bagStatus ||
-              operationalFilter !== "todos" ||
-              hotZone ||
-              turno ||
-              rankingOrder !== "melhor_pior" ? (
+              {draftFilters.search ||
+              draftFilters.bagStatus ||
+              draftFilters.operationalFilter !== "todos" ||
+              draftFilters.hotZone ||
+              draftFilters.turno ||
+              draftFilters.rankingOrder !== "melhor_pior" ? (
                 <button type="button" className="secondary-button courier-reset-button" onClick={resetFilters}>
-                  Limpar
+                  {isApplyingFilters ? "Limpando..." : "Limpar filtros"}
                 </button>
               ) : null}
             </div>
@@ -574,8 +672,14 @@ export function CourierPanelClient({
                 <p>Observacao: {courier.observation || "Sem observacoes"}</p>
                 {contextFilterActive ? (
                   <p className="courier-context-note">
-                    Contexto atual: {hotZone ? `Hot Zone ${hotZone}` : "todas as Hot Zones"} /{" "}
-                    {turno ? BAG_SHIFT_LABELS[turno] : "todos os turnos"}
+                    Contexto atual:{" "}
+                    {appliedFilters.hotZone
+                      ? `Hot Zone ${appliedFilters.hotZone}`
+                      : "todas as Hot Zones"}{" "}
+                    /{" "}
+                    {appliedFilters.turno
+                      ? BAG_SHIFT_LABELS[appliedFilters.turno]
+                      : "todos os turnos"}
                   </p>
                 ) : null}
                 <div className="courier-performance-grid">
