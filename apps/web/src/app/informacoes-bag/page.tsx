@@ -1620,87 +1620,93 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
                 <strong>Busca e filtros operacionais</strong>
                 <p>Filtre a base e monte a melhor shortlist por Hot Zone, turno e momento operacional.</p>
               </div>
-              <form action="/informacoes-bag" method="get" className="courier-toolbar courier-toolbar-grid">
+              <form action="/informacoes-bag" method="get" className="courier-toolbar courier-toolbar-stack">
                 <input type="hidden" name="data_inicio" value={selectedDashboardStart} />
                 <input type="hidden" name="data_fim" value={selectedDashboardEnd} />
-                <input
-                  type="search"
-                  name="busca"
-                  defaultValue={rawSearch}
-                  className="text-input courier-search-input"
-                  placeholder="Pesquisar por nome, ID, telefone, CPF, status, Hot Zone ou operador"
-                />
-                <select
-                  name="status_bag"
-                  defaultValue={selectedBagStatus}
-                  className="select-input courier-filter-select"
-                >
-                  <option value="">Todos os status BAG</option>
-                  {bagStatusesResult.data.map((status) => (
-                    <option key={status.id} value={status.slug}>
-                      {status.label}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  name="hotzone"
-                  defaultValue={selectedHotZone}
-                  className="select-input courier-filter-select"
-                >
-                  <option value="">Todas as Hot Zones</option>
-                  {availableHotZones.map((hotZone) => (
-                    <option key={hotZone} value={hotZone}>
-                      {hotZone}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  name="turno"
-                  defaultValue={selectedTurno}
-                  className="select-input courier-filter-select"
-                >
-                  <option value="">Todos os turnos</option>
-                  {(Object.keys(BAG_SHIFT_LABELS) as BagShift[]).map((shift) => (
-                    <option key={shift} value={shift}>
-                      {BAG_SHIFT_LABELS[shift]}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  name="situacao"
-                  defaultValue={operationalFilter}
-                  className="select-input courier-filter-select"
-                >
-                  {(Object.keys(OPERATIONAL_FILTER_LABELS) as OperationalFilter[]).map((filterKey) => (
-                    <option key={filterKey} value={filterKey}>
-                      {OPERATIONAL_FILTER_LABELS[filterKey]}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  name="ordenacao"
-                  defaultValue={rankingOrder}
-                  className="select-input courier-filter-select"
-                >
-                  {(Object.keys(RANKING_ORDER_LABELS) as RankingOrder[]).map((orderKey) => (
-                    <option key={orderKey} value={orderKey}>
-                      {RANKING_ORDER_LABELS[orderKey]}
-                    </option>
-                  ))}
-                </select>
-                <button type="submit" className="secondary-button">
-                  Filtrar
-                </button>
-                {rawSearch ||
-                selectedBagStatus ||
-                operationalFilter !== "todos" ||
-                selectedHotZone ||
-                selectedTurno ||
-                rankingOrder !== "melhor_pior" ? (
-                  <Link href="/informacoes-bag" className="link-button">
-                    Limpar
-                  </Link>
-                ) : null}
+                <div className="courier-toolbar-row courier-toolbar-row-primary">
+                  <input
+                    type="search"
+                    name="busca"
+                    defaultValue={rawSearch}
+                    className="text-input courier-search-input courier-filter-control"
+                    placeholder="Pesquisar por nome, ID, telefone, CPF, status, Hot Zone ou operador"
+                  />
+                  <select
+                    name="status_bag"
+                    defaultValue={selectedBagStatus}
+                    className="select-input courier-filter-select courier-filter-control"
+                  >
+                    <option value="">Todos os status BAG</option>
+                    {bagStatusesResult.data.map((status) => (
+                      <option key={status.id} value={status.slug}>
+                        {status.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="courier-toolbar-row courier-toolbar-row-secondary">
+                  <select
+                    name="hotzone"
+                    defaultValue={selectedHotZone}
+                    className="select-input courier-filter-select courier-filter-control"
+                  >
+                    <option value="">Todas as Hot Zones</option>
+                    {availableHotZones.map((hotZone) => (
+                      <option key={hotZone} value={hotZone}>
+                        {hotZone}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    name="turno"
+                    defaultValue={selectedTurno}
+                    className="select-input courier-filter-select courier-filter-control"
+                  >
+                    <option value="">Todos os turnos</option>
+                    {(Object.keys(BAG_SHIFT_LABELS) as BagShift[]).map((shift) => (
+                      <option key={shift} value={shift}>
+                        {BAG_SHIFT_LABELS[shift]}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    name="situacao"
+                    defaultValue={operationalFilter}
+                    className="select-input courier-filter-select courier-filter-control"
+                  >
+                    {(Object.keys(OPERATIONAL_FILTER_LABELS) as OperationalFilter[]).map((filterKey) => (
+                      <option key={filterKey} value={filterKey}>
+                        {OPERATIONAL_FILTER_LABELS[filterKey]}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    name="ordenacao"
+                    defaultValue={rankingOrder}
+                    className="select-input courier-filter-select courier-filter-control"
+                  >
+                    {(Object.keys(RANKING_ORDER_LABELS) as RankingOrder[]).map((orderKey) => (
+                      <option key={orderKey} value={orderKey}>
+                        {RANKING_ORDER_LABELS[orderKey]}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="courier-toolbar-actions">
+                    <button type="submit" className="primary-button">
+                      Filtrar
+                    </button>
+                    {rawSearch ||
+                    selectedBagStatus ||
+                    operationalFilter !== "todos" ||
+                    selectedHotZone ||
+                    selectedTurno ||
+                    rankingOrder !== "melhor_pior" ? (
+                      <Link href="/informacoes-bag" className="secondary-button link-button courier-reset-button">
+                        Limpar
+                      </Link>
+                    ) : null}
+                  </div>
+                </div>
               </form>
             </section>
 

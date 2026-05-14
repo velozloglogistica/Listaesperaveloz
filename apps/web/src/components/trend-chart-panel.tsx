@@ -19,6 +19,7 @@ type TrendChartPanelProps = {
   toneClass: string;
   format: "integer" | "percent";
   compact?: boolean;
+  fullscreenLabel?: string;
 };
 
 function formatPointValue(value: number, format: TrendChartPanelProps["format"]) {
@@ -70,6 +71,7 @@ export function TrendChartPanel({
   toneClass,
   format,
   compact = false,
+  fullscreenLabel = "Tela cheia",
 }: TrendChartPanelProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -122,6 +124,19 @@ export function TrendChartPanel({
   return (
     <>
       <div className={compact ? "trend-card-body trend-card-body-compact" : "trend-card-body"}>
+        {!title && !description ? (
+          <div className="trend-card-action-row">
+            <span className="trend-card-action-spacer" aria-hidden="true" />
+            <button
+              type="button"
+              className="secondary-button trend-fullscreen-button"
+              onClick={() => setIsFullscreen(true)}
+            >
+              {fullscreenLabel}
+            </button>
+          </div>
+        ) : null}
+
         {title || description ? (
           <div className="trend-card-top">
             <div>
@@ -133,7 +148,7 @@ export function TrendChartPanel({
               className="secondary-button trend-fullscreen-button"
               onClick={() => setIsFullscreen(true)}
             >
-              Tela cheia
+              {fullscreenLabel}
             </button>
           </div>
         ) : null}
