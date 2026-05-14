@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { useFormStatus } from "react-dom";
 
 import { createBagCourierAction, type BagActionState } from "@/app/bag-actions";
 import { BAG_SHIFT_OPTIONS, BAG_VEHICLE_OPTIONS, BAG_WEEKDAY_OPTIONS } from "@/lib/bag-config";
@@ -31,6 +32,16 @@ type BagCourierFormProps = {
     label: string;
   }>;
 };
+
+function SubmitButton() {
+  const { pending } = useFormStatus();
+
+  return (
+    <button type="submit" className="primary-button" disabled={pending}>
+      {pending ? "Salvando entregador..." : "Salvar entregador"}
+    </button>
+  );
+}
 
 export function BagCourierForm({ cities, regions, operators, statuses }: BagCourierFormProps) {
   const [state, formAction] = useActionState(createBagCourierAction, initialState);
@@ -228,9 +239,7 @@ export function BagCourierForm({ cities, regions, operators, statuses }: BagCour
         <h3>6. Finalizar cadastro</h3>
         <p>Revise os dados preenchidos acima e confirme o cadastro do entregador.</p>
         <div className="manual-form-actions">
-          <button type="submit" className="primary-button">
-            Salvar entregador
-          </button>
+          <SubmitButton />
         </div>
       </div>
 

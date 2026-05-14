@@ -46,6 +46,13 @@ type CourierPerformanceSummary = {
   recommendation: string | null;
 };
 
+type CourierContextPerformanceEntry = {
+  kind: "hotzone" | "turno" | "pair";
+  hotZone: string | null;
+  turno: BagShift | null;
+  summary: CourierPerformanceSummary;
+};
+
 type BagCourierInsightView = {
   id: string;
   partner_delivery_id: string;
@@ -65,9 +72,11 @@ type BagCourierInsightView = {
   performance: CourierPerformanceSummary;
   listPerformance: CourierPerformanceSummary;
   dashboardPerformance: CourierPerformanceSummary;
-  hasContextMatch: boolean;
-  matchesSelectedHotZone: boolean;
-  matchesSelectedTurno: boolean;
+  contextPerformances: CourierContextPerformanceEntry[];
+};
+
+type FilteredCourierView = BagCourierInsightView & {
+  activePerformance: CourierPerformanceSummary;
 };
 
 type BagStatusOption = {
@@ -181,9 +190,7 @@ function formatMetricLabel(value: number | null) {
   return `${value.toFixed(1)}%`;
 }
 
-function matchesOperationalFilter(courier: BagCourierInsightView, filter: OperationalFilter) {
-  const base = courier.listPerformance;
-
+function matchesOperationalFilter(base: CourierPerformanceSummary, filter: OperationalFilter) {
   switch (filter) {
     case "ativos_hoje":
       return base.hasRunOnLatestDate;
@@ -203,6 +210,84 @@ function matchesOperationalFilter(courier: BagCourierInsightView, filter: Operat
     default:
       return true;
   }
+}
+
+function matchesSelectedHotZone(courier: BagCourierInsightView, hotZone: string) {
+  const normalizedHotZone = normalizeSearchValue(hotZone);
+
+  if (!normalizedHotZone) {
+    return true;
+  }
+
+  return (
+    courier.regions.some((region) => normalizeSearchValue(region) === normalizedHotZone) ||
+    courier.contextPerformances.some(
+      (entry) => entry.hotZone && normalizeSearchValue(entry.hotZone) === normalizedHotZone,
+    )
+  );
+}
+
+function matchesSelectedTurno(courier: BagCourierInsightView, turno: BagShift | "") {
+  if (!turno) {
+    return true;
+  }
+
+  return (
+    courier.preferred_shifts.includes(turno) ||
+    courier.contextPerformances.some((entry) => entry.turno === turno)
+  );
+}
+
+function getAppliedContextSummary(
+  courier: BagCourierInsightView,
+  filters: Pick<PanelFilters, "hotZone" | "turno">,
+): CourierPerformanceSummary {
+  if (!filters.hotZone && !filters.turno) {
+    return courier.listPerformance;
+  }
+
+  const normalizedHotZone = normalizeSearchValue(filters.hotZone);
+
+  const matchedEntry =
+    courier.contextPerformances.find(
+      (entry) =>
+        entry.kind === "pair" &&
+        entry.turno === filters.turno &&
+        normalizeSearchValue(entry.hotZone) === normalizedHotZone,
+    ) ||
+    courier.contextPerformances.find(
+      (entry) =>
+        entry.kind === "hotzone" &&
+        !filters.turno &&
+        normalizeSearchValue(entry.hotZone) === normalizedHotZone,
+    ) ||
+    courier.contextPerformances.find(
+      (entry) => entry.kind === "turno" && !filters.hotZone && entry.turno === filters.turno,
+    );
+
+  if (matchedEntry) {
+    return matchedEntry.summary;
+  }
+
+  return {
+    hasPerformanceHistory: false,
+    hasRunOnLatestDate: false,
+    hasRunLast15Days: false,
+    hasRunLast30Days: false,
+    lastRunDate: null,
+    activeDaysLast30: 0,
+    totalOrdersLast30: 0,
+    avgTsh: null,
+    avgTshCritical: null,
+    avgAr: null,
+    avgCaa: null,
+    avgOvertime: null,
+    score: null,
+    tier: "sem_historico",
+    dominantHotZone: filters.hotZone || null,
+    dominantShift: filters.turno ? BAG_SHIFT_LABELS[filters.turno] : null,
+    recommendation: "Sem historico recente nesse contexto filtrado.",
+  };
 }
 
 function matchesCourierSearch(
@@ -241,7 +326,7 @@ function matchesCourierSearch(
   return searchableContent.includes(searchTerm);
 }
 
-function getCourierPriority(courier: BagCourierInsightView): [number, number, string] {
+function getCourierPriority(courier: FilteredCourierView): [number, number, string] {
   const priorityByTier: Record<CourierPerformanceTier, number> = {
     parado: 0,
     atencao: 1,
@@ -251,25 +336,25 @@ function getCourierPriority(courier: BagCourierInsightView): [number, number, st
   };
 
   return [
-    priorityByTier[courier.listPerformance.tier],
-    courier.listPerformance.lastRunDate
-      ? -Number(courier.listPerformance.lastRunDate.replace(/-/g, ""))
+    priorityByTier[courier.activePerformance.tier],
+    courier.activePerformance.lastRunDate
+      ? -Number(courier.activePerformance.lastRunDate.replace(/-/g, ""))
       : Number.MAX_SAFE_INTEGER,
     courier.full_name,
   ];
 }
 
-function getContextScore(courier: BagCourierInsightView) {
-  return courier.listPerformance.score ?? -1;
+function getContextScore(courier: FilteredCourierView) {
+  return courier.activePerformance.score ?? -1;
 }
 
-function getContextLastRunSortValue(courier: BagCourierInsightView) {
-  return courier.listPerformance.lastRunDate
-    ? Number(courier.listPerformance.lastRunDate.replace(/-/g, ""))
+function getContextLastRunSortValue(courier: FilteredCourierView) {
+  return courier.activePerformance.lastRunDate
+    ? Number(courier.activePerformance.lastRunDate.replace(/-/g, ""))
     : 0;
 }
 
-function sortCouriers(couriers: BagCourierInsightView[], order: RankingOrder) {
+function sortCouriers(couriers: FilteredCourierView[], order: RankingOrder) {
   return [...couriers].sort((a, b) => {
     if (order === "melhor_pior") {
       const scoreDiff = getContextScore(b) - getContextScore(a);
@@ -280,8 +365,8 @@ function sortCouriers(couriers: BagCourierInsightView[], order: RankingOrder) {
     }
 
     if (order === "pior_melhor") {
-      const aScore = a.listPerformance.score;
-      const bScore = b.listPerformance.score;
+      const aScore = a.activePerformance.score;
+      const bScore = b.activePerformance.score;
 
       if (aScore === null && bScore !== null) {
         return 1;
@@ -419,19 +504,24 @@ export function CourierPanelClient({
     draftFilters.rankingOrder !== appliedFilters.rankingOrder;
 
   const filteredCouriers = useMemo(() => {
-    const filtered = couriers.filter((courier) => {
+    const filtered = couriers.flatMap<FilteredCourierView>((courier) => {
       const matchesContextFilters =
-        (!appliedFilters.hotZone || courier.matchesSelectedHotZone) &&
-        (!appliedFilters.turno || courier.matchesSelectedTurno);
+        matchesSelectedHotZone(courier, appliedFilters.hotZone) &&
+        matchesSelectedTurno(courier, appliedFilters.turno);
       const matchesBagStatus =
         !appliedFilters.bagStatus || courier.bag_status === appliedFilters.bagStatus;
+      const activePerformance = getAppliedContextSummary(courier, appliedFilters);
 
-      return (
-        matchesContextFilters &&
-        matchesBagStatus &&
-        matchesOperationalFilter(courier, appliedFilters.operationalFilter) &&
-        matchesCourierSearch(courier, searchTerm, bagStatusLabels)
-      );
+      if (
+        !matchesContextFilters ||
+        !matchesBagStatus ||
+        !matchesOperationalFilter(activePerformance, appliedFilters.operationalFilter) ||
+        !matchesCourierSearch(courier, searchTerm, bagStatusLabels)
+      ) {
+        return [];
+      }
+
+      return [{ ...courier, activePerformance }];
     });
 
     return sortCouriers(filtered, appliedFilters.rankingOrder);
@@ -685,39 +775,39 @@ export function CourierPanelClient({
                 <div className="courier-performance-grid">
                   <span className="courier-performance-stat">
                     <strong>Ultima rodada</strong>
-                    <span>{formatDateLabel(courier.listPerformance.lastRunDate)}</span>
+                    <span>{formatDateLabel(courier.activePerformance.lastRunDate)}</span>
                   </span>
                   <span className="courier-performance-stat">
                     <strong>Dias ativos 30d</strong>
-                    <span>{courier.listPerformance.activeDaysLast30}</span>
+                    <span>{courier.activePerformance.activeDaysLast30}</span>
                   </span>
                   <span className="courier-performance-stat">
                     <strong>Pedidos 30d</strong>
-                    <span>{courier.listPerformance.totalOrdersLast30}</span>
+                    <span>{courier.activePerformance.totalOrdersLast30}</span>
                   </span>
                   <span className="courier-performance-stat">
                     <strong>TSH</strong>
-                    <span>{formatMetricLabel(courier.listPerformance.avgTsh)}</span>
+                    <span>{formatMetricLabel(courier.activePerformance.avgTsh)}</span>
                   </span>
                   <span className="courier-performance-stat">
                     <strong>AR</strong>
-                    <span>{formatMetricLabel(courier.listPerformance.avgAr)}</span>
+                    <span>{formatMetricLabel(courier.activePerformance.avgAr)}</span>
                   </span>
                   <span className="courier-performance-stat">
                     <strong>CAA</strong>
-                    <span>{formatMetricLabel(courier.listPerformance.avgCaa)}</span>
+                    <span>{formatMetricLabel(courier.activePerformance.avgCaa)}</span>
                   </span>
                   <span className="courier-performance-stat">
                     <strong>Overtime</strong>
-                    <span>{formatMetricLabel(courier.listPerformance.avgOvertime)}</span>
+                    <span>{formatMetricLabel(courier.activePerformance.avgOvertime)}</span>
                   </span>
                   <span className="courier-performance-stat">
                     <strong>TSH critico</strong>
-                    <span>{formatMetricLabel(courier.listPerformance.avgTshCritical)}</span>
+                    <span>{formatMetricLabel(courier.activePerformance.avgTshCritical)}</span>
                   </span>
                 </div>
                 <p className="courier-highlight">
-                  <strong>Melhor encaixe:</strong> {courier.listPerformance.recommendation}
+                  <strong>Melhor encaixe:</strong> {courier.activePerformance.recommendation}
                 </p>
                 {courier.whatsapp_web_link ? (
                   <p>
@@ -733,8 +823,8 @@ export function CourierPanelClient({
                 ) : null}
               </div>
               <div className="user-card-meta">
-                <span className={`day-chip ${PERFORMANCE_TIER_CLASS_NAMES[courier.listPerformance.tier]}`}>
-                  {PERFORMANCE_TIER_LABELS[courier.listPerformance.tier]}
+                <span className={`day-chip ${PERFORMANCE_TIER_CLASS_NAMES[courier.activePerformance.tier]}`}>
+                  {PERFORMANCE_TIER_LABELS[courier.activePerformance.tier]}
                 </span>
                 <span className="day-chip">{bagStatusLabels[courier.bag_status] || courier.bag_status}</span>
                 <form action={updateBagCourierStatus} className="status-form">
