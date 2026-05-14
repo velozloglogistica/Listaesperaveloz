@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 import { updateBagCourierStatus } from "@/app/bag-actions";
@@ -123,6 +123,8 @@ const RANKING_ORDER_LABELS: Record<RankingOrder, string> = {
   mais_recente: "Rodou mais recente",
   mais_parado: "Mais parado primeiro",
 };
+
+const COURIERS_PAGE_SIZE = 30;
 
 function normalizeSearchValue(value: string | null | undefined) {
   return String(value || "")
@@ -365,6 +367,7 @@ export function CourierPanelClient({
   const [turno, setTurno] = useState<BagShift | "">(initialTurno);
   const [operationalFilter, setOperationalFilter] = useState<OperationalFilter>(initialOperationalFilter);
   const [rankingOrder, setRankingOrder] = useState<RankingOrder>(initialRankingOrder);
+  const [visibleCount, setVisibleCount] = useState(COURIERS_PAGE_SIZE);
 
   const searchTerm = useMemo(() => normalizeSearchValue(search), [search]);
   const contextFilterActive = Boolean(hotZone) || Boolean(turno);
@@ -386,6 +389,17 @@ export function CourierPanelClient({
 
     return sortCouriers(filtered, rankingOrder);
   }, [bagStatus, bagStatusLabels, couriers, hotZone, operationalFilter, rankingOrder, searchTerm, turno]);
+
+  useEffect(() => {
+    setVisibleCount(COURIERS_PAGE_SIZE);
+  }, [searchTerm, bagStatus, hotZone, turno, operationalFilter, rankingOrder]);
+
+  const visibleCouriers = useMemo(
+    () => filteredCouriers.slice(0, visibleCount),
+    [filteredCouriers, visibleCount],
+  );
+  const hasMoreCouriers = visibleCouriers.length < filteredCouriers.length;
+  const remainingCouriers = Math.max(filteredCouriers.length - visibleCouriers.length, 0);
 
   const summaryText = searchTerm
     ? `Mostrando ${filteredCouriers.length} de ${couriers.length} entregadores para a busca atual.`
@@ -542,7 +556,7 @@ export function CourierPanelClient({
 
       <div className="users-list">
         {filteredCouriers.length > 0 ? (
-          filteredCouriers.map((courier) => (
+          visibleCouriers.map((courier) => (
             <article key={courier.id} className="user-card user-card-stack">
               <div>
                 <strong>
@@ -659,6 +673,27 @@ export function CourierPanelClient({
           </article>
         )}
       </div>
+
+      {hasMoreCouriers ? (
+        <div className="courier-load-more">
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => setVisibleCount((currentValue) => currentValue + COURIERS_PAGE_SIZE)}
+          >
+            Ver mais {Math.min(COURIERS_PAGE_SIZE, remainingCouriers)} entregadores
+          </button>
+          <span>
+            Mostrando {visibleCouriers.length} de {filteredCouriers.length}.
+          </span>
+        </div>
+      ) : filteredCouriers.length > COURIERS_PAGE_SIZE ? (
+        <div className="courier-load-more">
+          <span>
+            Mostrando {filteredCouriers.length} de {filteredCouriers.length}.
+          </span>
+        </div>
+      ) : null}
     </section>
   );
 }
