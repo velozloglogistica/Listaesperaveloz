@@ -111,15 +111,14 @@ export function AppShell({ currentPath, title, description, user, children }: Ap
               alt="Logo da Veloz"
               className="sidebar-brand-logo"
             />
-            <div>
+            <div className="sidebar-brand-copy">
               <strong>VELOZLOG</strong>
               <p>SaaS</p>
             </div>
           </div>
           <div className="sidebar-tenant-card">
-            <span className="sidebar-tenant-badge">{user.current_tenant.name.slice(0, 1).toUpperCase()}</span>
             <div>
-              <strong>{user.current_tenant.name}</strong>
+              <strong>{user.full_name}</strong>
               <p>{userLabel}</p>
             </div>
           </div>
@@ -150,10 +149,9 @@ export function AppShell({ currentPath, title, description, user, children }: Ap
         </nav>
 
         <div className="sidebar-user">
-          <div>
-            <strong>{user.full_name}</strong>
+          <div className="sidebar-user-meta">
+            <strong>{user.current_tenant.name}</strong>
             <p>{user.email}</p>
-            <small>{userLabel}</small>
           </div>
           <LogoutForm />
         </div>
