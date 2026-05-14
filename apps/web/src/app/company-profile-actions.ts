@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 
 import { requireSettingsAccess } from "@/lib/auth";
 import { createBagStatusSlug } from "@/lib/bag-config";
@@ -14,6 +14,10 @@ export type CompanyProfileActionState = {
 
 const settingsSchemaMessage =
   "Falta rodar a migration do perfil da empresa. Execute supabase/add_bag_information_module.sql.";
+
+function revalidateBagInfoCache(tenantId: string) {
+  revalidateTag(`bag-info:${tenantId}`);
+}
 
 function normalizeText(value: string) {
   return value.replace(/\s+/g, " ").trim();
@@ -61,6 +65,8 @@ export async function updateTenantSettingsAction(
 
   revalidatePath("/perfil-empresa");
   revalidatePath("/informacoes-bag");
+  revalidateBagInfoCache(tenantId);
+  revalidateBagInfoCache(tenantId);
 
   return {
     status: "success",
@@ -120,6 +126,7 @@ export async function createTenantBagStatusAction(
 
   revalidatePath("/perfil-empresa");
   revalidatePath("/informacoes-bag");
+  revalidateBagInfoCache(tenantId);
 
   return {
     status: "success",
@@ -163,6 +170,7 @@ export async function updateTenantBagStatusAction(
 
   revalidatePath("/perfil-empresa");
   revalidatePath("/informacoes-bag");
+  revalidateBagInfoCache(tenantId);
 
   return {
     status: "success",
@@ -239,6 +247,7 @@ export async function deleteTenantBagStatusAction(
 
   revalidatePath("/perfil-empresa");
   revalidatePath("/informacoes-bag");
+  revalidateBagInfoCache(tenantId);
 
   return {
     status: "success",
@@ -282,6 +291,7 @@ export async function updateTenantCityAction(
 
   revalidatePath("/perfil-empresa");
   revalidatePath("/informacoes-bag");
+  revalidateBagInfoCache(tenantId);
 
   return {
     status: "success",
@@ -356,6 +366,7 @@ export async function deleteTenantCityAction(
 
   revalidatePath("/perfil-empresa");
   revalidatePath("/informacoes-bag");
+  revalidateBagInfoCache(tenantId);
 
   return {
     status: "success",
@@ -399,6 +410,7 @@ export async function updateTenantHotZoneAction(
 
   revalidatePath("/perfil-empresa");
   revalidatePath("/informacoes-bag");
+  revalidateBagInfoCache(tenantId);
 
   return {
     status: "success",
@@ -474,6 +486,7 @@ export async function deleteTenantHotZoneAction(
 
   revalidatePath("/perfil-empresa");
   revalidatePath("/informacoes-bag");
+  revalidateBagInfoCache(tenantId);
 
   return {
     status: "success",

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { unstable_cache } from "next/cache";
 
 import { AppShell } from "@/components/app-shell";
 import { BagStatusForm } from "@/components/bag-status-form";
@@ -78,6 +79,14 @@ type DailyPerformanceRow = {
   overtime: number | null;
 };
 
+type DailyPerformanceActivityRow = {
+  data: string;
+  id_entregador: string | null;
+  cpf_entregador: string | null;
+  nome_entregador: string | null;
+  numero_telefone: string | null;
+};
+
 type ShiftPerformanceRow = {
   data: string;
   periodo_turno: string | null;
@@ -94,6 +103,16 @@ type ShiftPerformanceRow = {
   ar: number | null;
   caa: number | null;
   overtime: number | null;
+};
+
+type ShiftPerformanceActivityRow = {
+  data: string;
+  periodo_turno: string | null;
+  hot_zone: string | null;
+  id_entregador: string | null;
+  cpf_entregador: string | null;
+  nome_entregador: string | null;
+  numero_telefone: string | null;
 };
 
 type PerformanceIndex<T> = {
@@ -135,6 +154,7 @@ type RankingOrder = "melhor_pior" | "pior_melhor" | "mais_recente" | "mais_parad
 type BagCourierInsightView = BagCourierView & {
   performance: CourierPerformanceSummary;
   listPerformance: CourierPerformanceSummary;
+  dashboardPerformance: CourierPerformanceSummary;
   hasContextMatch: boolean;
   matchesSelectedHotZone: boolean;
   matchesSelectedTurno: boolean;
@@ -185,6 +205,11 @@ const RANKING_ORDER_LABELS: Record<RankingOrder, string> = {
 };
 
 const SUPABASE_PAGE_SIZE = 1000;
+const BAG_INFO_CACHE_SECONDS = 60;
+
+function getBagInfoCacheTag(tenantId: string) {
+  return `bag-info:${tenantId}`;
+}
 
 async function fetchAllTenantRows<T>(
   table: string,
@@ -199,6 +224,43 @@ async function fetchAllTenantRows<T>(
       .from(table)
       .select(columns)
       .eq("tenant_id", tenantId)
+      .order("data", { ascending: false })
+      .range(from, from + SUPABASE_PAGE_SIZE - 1);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const batch = (data || []) as T[];
+    rows.push(...batch);
+
+    if (batch.length < SUPABASE_PAGE_SIZE) {
+      break;
+    }
+
+    from += SUPABASE_PAGE_SIZE;
+  }
+
+  return rows;
+}
+
+async function fetchTenantRowsByDateRange<T>(
+  table: string,
+  columns: string,
+  tenantId: string,
+  startDate: string,
+  endDate: string,
+): Promise<T[]> {
+  const rows: T[] = [];
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await supabaseServer
+      .from(table)
+      .select(columns)
+      .eq("tenant_id", tenantId)
+      .gte("data", startDate)
+      .lte("data", endDate)
       .order("data", { ascending: false })
       .range(from, from + SUPABASE_PAGE_SIZE - 1);
 
@@ -243,6 +305,17 @@ async function getTenantCities(
   };
 }
 
+async function getCachedTenantCities(tenantId: string) {
+  return unstable_cache(
+    async () => getTenantCities(tenantId),
+    [`bag-info-cities-${tenantId}`],
+    {
+      revalidate: BAG_INFO_CACHE_SECONDS,
+      tags: [getBagInfoCacheTag(tenantId)],
+    },
+  )();
+}
+
 async function getTenantRegions(
   tenantId: string,
 ): Promise<{ foundationReady: boolean; data: TenantRegionView[] }> {
@@ -283,6 +356,17 @@ async function getTenantRegions(
   };
 }
 
+async function getCachedTenantRegions(tenantId: string) {
+  return unstable_cache(
+    async () => getTenantRegions(tenantId),
+    [`bag-info-regions-${tenantId}`],
+    {
+      revalidate: BAG_INFO_CACHE_SECONDS,
+      tags: [getBagInfoCacheTag(tenantId)],
+    },
+  )();
+}
+
 async function getTenantOperators(tenantId: string): Promise<TenantOperatorView[]> {
   const { data, error } = await supabaseServer
     .from("tenant_memberships")
@@ -312,6 +396,17 @@ async function getTenantOperators(tenantId: string): Promise<TenantOperatorView[
   });
 }
 
+async function getCachedTenantOperators(tenantId: string) {
+  return unstable_cache(
+    async () => getTenantOperators(tenantId),
+    [`bag-info-operators-${tenantId}`],
+    {
+      revalidate: BAG_INFO_CACHE_SECONDS,
+      tags: [getBagInfoCacheTag(tenantId)],
+    },
+  )();
+}
+
 async function getTenantBagStatuses(
   tenantId: string,
 ): Promise<{ foundationReady: boolean; data: TenantBagStatusView[] }> {
@@ -337,20 +432,115 @@ async function getTenantBagStatuses(
   };
 }
 
-async function getDailyPerformanceRows(tenantId: string): Promise<DailyPerformanceRow[]> {
+async function getCachedTenantBagStatuses(tenantId: string) {
+  return unstable_cache(
+    async () => getTenantBagStatuses(tenantId),
+    [`bag-info-statuses-${tenantId}`],
+    {
+      revalidate: BAG_INFO_CACHE_SECONDS,
+      tags: [getBagInfoCacheTag(tenantId)],
+    },
+  )();
+}
+
+async function getDailyPerformanceActivityRows(
+  tenantId: string,
+): Promise<DailyPerformanceActivityRow[]> {
   return fetchAllTenantRows<DailyPerformanceRow>(
     "performance_por_entregador_diario",
-    "data,id_entregador,cpf_entregador,nome_entregador,numero_telefone,cidade,pedidos_finalizados,tsh,tsh_critico,ar,caa,overtime",
+    "data,id_entregador,cpf_entregador,nome_entregador,numero_telefone",
     tenantId,
   );
 }
 
-async function getShiftPerformanceRows(tenantId: string): Promise<ShiftPerformanceRow[]> {
-  return fetchAllTenantRows<ShiftPerformanceRow>(
+async function getCachedDailyPerformanceActivityRows(tenantId: string) {
+  return unstable_cache(
+    async () => getDailyPerformanceActivityRows(tenantId),
+    [`bag-info-daily-activity-${tenantId}`],
+    {
+      revalidate: BAG_INFO_CACHE_SECONDS,
+      tags: [getBagInfoCacheTag(tenantId)],
+    },
+  )();
+}
+
+async function getShiftPerformanceActivityRows(
+  tenantId: string,
+): Promise<ShiftPerformanceActivityRow[]> {
+  return fetchAllTenantRows<ShiftPerformanceActivityRow>(
+    "performance_por_turno_diario",
+    "data,periodo_turno,hot_zone,id_entregador,cpf_entregador,nome_entregador,numero_telefone",
+    tenantId,
+  );
+}
+
+async function getCachedShiftPerformanceActivityRows(tenantId: string) {
+  return unstable_cache(
+    async () => getShiftPerformanceActivityRows(tenantId),
+    [`bag-info-shift-activity-${tenantId}`],
+    {
+      revalidate: BAG_INFO_CACHE_SECONDS,
+      tags: [getBagInfoCacheTag(tenantId)],
+    },
+  )();
+}
+
+async function getDailyPerformanceRows(
+  tenantId: string,
+  startDate: string,
+  endDate: string,
+): Promise<DailyPerformanceRow[]> {
+  return fetchTenantRowsByDateRange<DailyPerformanceRow>(
+    "performance_por_entregador_diario",
+    "data,id_entregador,cpf_entregador,nome_entregador,numero_telefone,cidade,pedidos_finalizados,tsh,tsh_critico,ar,caa,overtime",
+    tenantId,
+    startDate,
+    endDate,
+  );
+}
+
+async function getCachedDailyPerformanceRows(
+  tenantId: string,
+  startDate: string,
+  endDate: string,
+) {
+  return unstable_cache(
+    async () => getDailyPerformanceRows(tenantId, startDate, endDate),
+    [`bag-info-daily-metrics-${tenantId}-${startDate}-${endDate}`],
+    {
+      revalidate: BAG_INFO_CACHE_SECONDS,
+      tags: [getBagInfoCacheTag(tenantId)],
+    },
+  )();
+}
+
+async function getShiftPerformanceRows(
+  tenantId: string,
+  startDate: string,
+  endDate: string,
+): Promise<ShiftPerformanceRow[]> {
+  return fetchTenantRowsByDateRange<ShiftPerformanceRow>(
     "performance_por_turno_diario",
     "data,periodo_turno,hot_zone,id_entregador,cpf_entregador,nome_entregador,numero_telefone,cidade,pedidos_finalizados,horas_reais_conectado_horarios,duracao_total_horarios_agendados,tsh,ar,caa,overtime",
     tenantId,
+    startDate,
+    endDate,
   );
+}
+
+async function getCachedShiftPerformanceRows(
+  tenantId: string,
+  startDate: string,
+  endDate: string,
+) {
+  return unstable_cache(
+    async () => getShiftPerformanceRows(tenantId, startDate, endDate),
+    [`bag-info-shift-metrics-${tenantId}-${startDate}-${endDate}`],
+    {
+      revalidate: BAG_INFO_CACHE_SECONDS,
+      tags: [getBagInfoCacheTag(tenantId)],
+    },
+  )();
 }
 
 async function getBagCouriers(
@@ -398,9 +588,11 @@ async function getBagCouriers(
       return acc;
     }
 
-    acc[item.bag_courier_id] = acc[item.bag_courier_id]
-      ? [...acc[item.bag_courier_id], region.name]
-      : [region.name];
+    if (!acc[item.bag_courier_id]) {
+      acc[item.bag_courier_id] = [];
+    }
+
+    acc[item.bag_courier_id].push(region.name);
     return acc;
   }, {});
 
@@ -437,6 +629,17 @@ async function getBagCouriers(
   };
 }
 
+async function getCachedBagCouriers(tenantId: string) {
+  return unstable_cache(
+    async () => getBagCouriers(tenantId),
+    [`bag-info-couriers-${tenantId}`],
+    {
+      revalidate: BAG_INFO_CACHE_SECONDS,
+      tags: [getBagInfoCacheTag(tenantId)],
+    },
+  )();
+}
+
 function formatShiftLabels(values: BagShift[]) {
   if (values.length === 0) {
     return "Sem turnos definidos";
@@ -468,6 +671,34 @@ function normalizeCodeValue(value: string | null | undefined) {
 
 function normalizeDigits(value: string | null | undefined) {
   return String(value || "").replace(/\D/g, "");
+}
+
+function pickEarliestDate(values: Array<string | null | undefined>) {
+  return values.reduce<string | null>((earliestDate, value) => {
+    if (!value) {
+      return earliestDate;
+    }
+
+    if (!earliestDate || value < earliestDate) {
+      return value;
+    }
+
+    return earliestDate;
+  }, null);
+}
+
+function pickLatestDate(values: Array<string | null | undefined>) {
+  return values.reduce<string | null>((latestDate, value) => {
+    if (!value) {
+      return latestDate;
+    }
+
+    if (!latestDate || value > latestDate) {
+      return value;
+    }
+
+    return latestDate;
+  }, null);
 }
 
 function formatDateLabel(value: string | null) {
@@ -552,15 +783,33 @@ function buildPerformanceIndex<
     const phoneKey = normalizeDigits(row.numero_telefone);
 
     if (idKey) {
-      index.byId.set(idKey, [...(index.byId.get(idKey) || []), row]);
+      const existingRows = index.byId.get(idKey);
+
+      if (existingRows) {
+        existingRows.push(row);
+      } else {
+        index.byId.set(idKey, [row]);
+      }
     }
 
     if (cpfKey) {
-      index.byCpf.set(cpfKey, [...(index.byCpf.get(cpfKey) || []), row]);
+      const existingRows = index.byCpf.get(cpfKey);
+
+      if (existingRows) {
+        existingRows.push(row);
+      } else {
+        index.byCpf.set(cpfKey, [row]);
+      }
     }
 
     if (phoneKey) {
-      index.byPhone.set(phoneKey, [...(index.byPhone.get(phoneKey) || []), row]);
+      const existingRows = index.byPhone.get(phoneKey);
+
+      if (existingRows) {
+        existingRows.push(row);
+      } else {
+        index.byPhone.set(phoneKey, [row]);
+      }
     }
   }
 
@@ -701,6 +950,24 @@ function getDateLabelShort(value: string) {
   }).format(new Date(`${value}T00:00:00Z`));
 }
 
+function filterRowsByDateRange<T extends { data: string }>(
+  rows: T[],
+  startDate: string | null,
+  endDate: string | null,
+) {
+  return rows.filter((row) => {
+    if (startDate && row.data < startDate) {
+      return false;
+    }
+
+    if (endDate && row.data > endDate) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
 function buildDateRangeBetween(startDate: string | null, endDate: string | null) {
   if (!startDate || !endDate || startDate > endDate) {
     return [];
@@ -725,26 +992,43 @@ function getTrendValueMap(rows: DailyPerformanceRow[] | ShiftPerformanceRow[], m
       return acc;
     }
 
-    acc[row.data] = [...(acc[row.data] || []), value];
+    if (!acc[row.data]) {
+      acc[row.data] = [];
+    }
+
+    acc[row.data].push(value);
     return acc;
   }, {});
 }
 
 function buildDistinctCourierTrend(
   dates: string[],
-  dailyRows: DailyPerformanceRow[],
-  shiftRows: ShiftPerformanceRow[],
+  dailyRows: DailyPerformanceActivityRow[],
+  shiftRows: ShiftPerformanceActivityRow[],
 ) {
-  return dates.map((date) => {
-    const distinctCount = getDistinctPerformanceCourierCount([
-      ...dailyRows.filter((row) => row.data === date),
-      ...shiftRows.filter((row) => row.data === date),
-    ]);
+  const couriersByDate = new Map<string, Set<string>>();
 
+  for (const row of [...dailyRows, ...shiftRows]) {
+    const entityKey = getPerformanceEntityKey(row);
+
+    if (!entityKey) {
+      continue;
+    }
+
+    const entities = couriersByDate.get(row.data);
+
+    if (entities) {
+      entities.add(entityKey);
+    } else {
+      couriersByDate.set(row.data, new Set([entityKey]));
+    }
+  }
+
+  return dates.map((date) => {
     return {
       date,
       label: getDateLabelShort(date),
-      value: distinctCount,
+      value: couriersByDate.get(date)?.size || 0,
     };
   });
 }
@@ -866,26 +1150,20 @@ function formatMetricLabel(value: number | null, { reverse = false }: { reverse?
 }
 
 function buildCourierPerformanceSummary(
+  activityRows: Array<{ data: string }>,
   dailyRows: DailyPerformanceRow[],
   shiftRows: ShiftPerformanceRow[],
   latestPerformanceDate: string | null,
 ): CourierPerformanceSummary {
   const last15Start = latestPerformanceDate ? subtractDaysFromIsoDate(latestPerformanceDate, 14) : null;
   const last30Start = latestPerformanceDate ? subtractDaysFromIsoDate(latestPerformanceDate, 29) : null;
-  const activityDates = Array.from(new Set([...dailyRows.map((row) => row.data), ...shiftRows.map((row) => row.data)]));
-  const lastRunDate =
-    getLatestPerformanceDate(dailyRows) ||
-    getLatestPerformanceDate(shiftRows.map((row) => ({ data: row.data }))) ||
-    null;
-  const dailyRowsLast15 = last15Start ? dailyRows.filter((row) => row.data >= last15Start) : [];
+  const lastRunDate = getLatestPerformanceDate(activityRows);
+  const activityRowsLast15 = last15Start ? activityRows.filter((row) => row.data >= last15Start) : [];
+  const activityRowsLast30 = last30Start ? activityRows.filter((row) => row.data >= last30Start) : [];
   const dailyRowsLast30 = last30Start ? dailyRows.filter((row) => row.data >= last30Start) : [];
-  const shiftRowsLast15 = last15Start ? shiftRows.filter((row) => row.data >= last15Start) : [];
   const shiftRowsLast30 = last30Start ? shiftRows.filter((row) => row.data >= last30Start) : [];
   const metricRowsLast30 = dailyRowsLast30.length > 0 ? dailyRowsLast30 : shiftRowsLast30;
-  const activeDaysLast30 = new Set([
-    ...dailyRowsLast30.map((row) => row.data),
-    ...shiftRowsLast30.map((row) => row.data),
-  ]).size;
+  const activeDaysLast30 = new Set(activityRowsLast30.map((row) => row.data)).size;
   const totalOrdersLast30 = sumNumbers(metricRowsLast30.map((row) => parseNumber(row.pedidos_finalizados)));
   const avgTsh = averageNumbers(metricRowsLast30.map((row) => normalizePercentMetric(row.tsh)));
   const avgTshCritical = averageNumbers(
@@ -904,10 +1182,10 @@ function buildCourierPerformanceSummary(
     shiftRowsLast30.map((row) => row.periodo_turno || "").filter(Boolean),
   );
   const baseSummary = {
-    hasPerformanceHistory: dailyRows.length > 0 || shiftRows.length > 0,
-    hasRunOnLatestDate: Boolean(latestPerformanceDate && activityDates.includes(latestPerformanceDate)),
-    hasRunLast15Days: dailyRowsLast15.length > 0 || shiftRowsLast15.length > 0,
-    hasRunLast30Days: dailyRowsLast30.length > 0 || shiftRowsLast30.length > 0,
+    hasPerformanceHistory: activityRows.length > 0,
+    hasRunOnLatestDate: Boolean(latestPerformanceDate && activityRows.some((row) => row.data === latestPerformanceDate)),
+    hasRunLast15Days: activityRowsLast15.length > 0,
+    hasRunLast30Days: activityRowsLast30.length > 0,
     lastRunDate,
     activeDaysLast30,
     totalOrdersLast30,
@@ -1101,14 +1379,24 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
   }
 
   const tenantId = currentUser.current_tenant.id;
-  const [citiesResult, regionsResult, operators, couriersResult, bagStatusesResult, dailyPerformanceRows, shiftPerformanceRows] = await Promise.all([
-    getTenantCities(tenantId),
-    getTenantRegions(tenantId),
-    getTenantOperators(tenantId),
-    getBagCouriers(tenantId),
-    getTenantBagStatuses(tenantId),
-    getDailyPerformanceRows(tenantId),
-    getShiftPerformanceRows(tenantId),
+  const [
+    citiesResult,
+    regionsResult,
+    operators,
+    couriersResult,
+    bagStatusesResult,
+    dailyPerformanceActivityRows,
+    shiftPerformanceActivityRows,
+    resolvedSearchParams,
+  ] = await Promise.all([
+    getCachedTenantCities(tenantId),
+    getCachedTenantRegions(tenantId),
+    getCachedTenantOperators(tenantId),
+    getCachedBagCouriers(tenantId),
+    getCachedTenantBagStatuses(tenantId),
+    getCachedDailyPerformanceActivityRows(tenantId),
+    getCachedShiftPerformanceActivityRows(tenantId),
+    searchParams,
   ]);
 
   const foundationReady =
@@ -1120,39 +1408,39 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
   const bagStatusLabels = Object.fromEntries(
     bagStatusesResult.data.map((status) => [status.slug, status.label]),
   ) as Record<string, string>;
-  const resolvedSearchParams = (await searchParams) || {};
+  const parsedSearchParams = resolvedSearchParams || {};
   const rawSearch =
-    typeof resolvedSearchParams.busca === "string"
-      ? resolvedSearchParams.busca
-      : resolvedSearchParams.busca?.[0] || "";
+    typeof parsedSearchParams?.busca === "string"
+      ? parsedSearchParams.busca
+      : parsedSearchParams?.busca?.[0] || "";
   const rawOperationalFilter =
-    typeof resolvedSearchParams.situacao === "string"
-      ? resolvedSearchParams.situacao
-      : resolvedSearchParams.situacao?.[0] || "todos";
+    typeof parsedSearchParams?.situacao === "string"
+      ? parsedSearchParams.situacao
+      : parsedSearchParams?.situacao?.[0] || "todos";
   const rawBagStatus =
-    typeof resolvedSearchParams.status_bag === "string"
-      ? resolvedSearchParams.status_bag
-      : resolvedSearchParams.status_bag?.[0] || "";
+    typeof parsedSearchParams?.status_bag === "string"
+      ? parsedSearchParams.status_bag
+      : parsedSearchParams?.status_bag?.[0] || "";
   const rawHotZone =
-    typeof resolvedSearchParams.hotzone === "string"
-      ? resolvedSearchParams.hotzone
-      : resolvedSearchParams.hotzone?.[0] || "";
+    typeof parsedSearchParams?.hotzone === "string"
+      ? parsedSearchParams.hotzone
+      : parsedSearchParams?.hotzone?.[0] || "";
   const rawTurno =
-    typeof resolvedSearchParams.turno === "string"
-      ? resolvedSearchParams.turno
-      : resolvedSearchParams.turno?.[0] || "";
+    typeof parsedSearchParams?.turno === "string"
+      ? parsedSearchParams.turno
+      : parsedSearchParams?.turno?.[0] || "";
   const rawRankingOrder =
-    typeof resolvedSearchParams.ordenacao === "string"
-      ? resolvedSearchParams.ordenacao
-      : resolvedSearchParams.ordenacao?.[0] || "melhor_pior";
+    typeof parsedSearchParams?.ordenacao === "string"
+      ? parsedSearchParams.ordenacao
+      : parsedSearchParams?.ordenacao?.[0] || "melhor_pior";
   const rawDataInicio =
-    typeof resolvedSearchParams.data_inicio === "string"
-      ? resolvedSearchParams.data_inicio
-      : resolvedSearchParams.data_inicio?.[0] || "";
+    typeof parsedSearchParams?.data_inicio === "string"
+      ? parsedSearchParams.data_inicio
+      : parsedSearchParams?.data_inicio?.[0] || "";
   const rawDataFim =
-    typeof resolvedSearchParams.data_fim === "string"
-      ? resolvedSearchParams.data_fim
-      : resolvedSearchParams.data_fim?.[0] || "";
+    typeof parsedSearchParams?.data_fim === "string"
+      ? parsedSearchParams.data_fim
+      : parsedSearchParams?.data_fim?.[0] || "";
   const operationalFilter = (Object.keys(OPERATIONAL_FILTER_LABELS) as OperationalFilter[]).includes(
     rawOperationalFilter as OperationalFilter,
   )
@@ -1171,8 +1459,8 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
     : "melhor_pior";
   const searchTerm = normalizeSearchValue(rawSearch);
   const latestPerformanceDate = getLatestPerformanceDate([
-    ...dailyPerformanceRows,
-    ...shiftPerformanceRows.map((row) => ({ data: row.data })),
+    ...dailyPerformanceActivityRows,
+    ...shiftPerformanceActivityRows.map((row) => ({ data: row.data })),
   ]);
   const defaultDashboardStart = latestPerformanceDate ? subtractDaysFromIsoDate(latestPerformanceDate, 13) : "";
   const defaultDashboardEnd = latestPerformanceDate || "";
@@ -1188,7 +1476,7 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
     new Set(
       [
         ...regionsResult.data.map((region) => region.name),
-        ...shiftPerformanceRows.map((row) => row.hot_zone || "").filter(Boolean),
+        ...shiftPerformanceActivityRows.map((row) => row.hot_zone || "").filter(Boolean),
       ].sort((a, b) => a.localeCompare(b, "pt-BR")),
     ),
   );
@@ -1196,22 +1484,39 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
     (value) => normalizeSearchValue(value) === normalizeSearchValue(rawHotZone),
   ) || "";
   const last15Start = latestPerformanceDate ? subtractDaysFromIsoDate(latestPerformanceDate, 14) : null;
-  const dashboardDailyRows =
-    selectedDashboardStart && selectedDashboardEnd
-      ? dailyPerformanceRows.filter(
-          (row) => row.data >= selectedDashboardStart && row.data <= selectedDashboardEnd,
-        )
-      : dailyPerformanceRows;
-  const dashboardShiftRows =
-    selectedDashboardStart && selectedDashboardEnd
-      ? shiftPerformanceRows.filter(
-          (row) => row.data >= selectedDashboardStart && row.data <= selectedDashboardEnd,
-        )
-      : shiftPerformanceRows;
+  const recentPerformanceStart = pickEarliestDate([selectedDashboardStart, latestPerformanceDate ? subtractDaysFromIsoDate(latestPerformanceDate, 29) : null]);
+  const recentPerformanceEnd = pickLatestDate([selectedDashboardEnd, latestPerformanceDate]);
+  const [recentDailyPerformanceRows, recentShiftPerformanceRows] =
+    recentPerformanceStart && recentPerformanceEnd
+      ? await Promise.all([
+          getCachedDailyPerformanceRows(tenantId, recentPerformanceStart, recentPerformanceEnd),
+          getCachedShiftPerformanceRows(tenantId, recentPerformanceStart, recentPerformanceEnd),
+        ])
+      : [[], []];
+  const dashboardDailyRows = filterRowsByDateRange(
+    recentDailyPerformanceRows,
+    selectedDashboardStart || null,
+    selectedDashboardEnd || null,
+  );
+  const dashboardShiftRows = filterRowsByDateRange(
+    recentShiftPerformanceRows,
+    selectedDashboardStart || null,
+    selectedDashboardEnd || null,
+  );
+  const dashboardDailyActivityRows = filterRowsByDateRange(
+    dailyPerformanceActivityRows,
+    selectedDashboardStart || null,
+    selectedDashboardEnd || null,
+  );
+  const dashboardShiftActivityRows = filterRowsByDateRange(
+    shiftPerformanceActivityRows,
+    selectedDashboardStart || null,
+    selectedDashboardEnd || null,
+  );
   const dashboardDatesWithData = Array.from(
     new Set([
-      ...dashboardDailyRows.map((row) => row.data),
-      ...dashboardShiftRows.map((row) => row.data),
+      ...dashboardDailyActivityRows.map((row) => row.data),
+      ...dashboardShiftActivityRows.map((row) => row.data),
     ]),
   ).sort();
   const dashboardTrendDates =
@@ -1220,31 +1525,33 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
       : buildDateRangeBetween(selectedDashboardStart, selectedDashboardEnd);
   const performanceRowsOnLatestDate = latestPerformanceDate
     ? [
-        ...dailyPerformanceRows.filter((row) => row.data === latestPerformanceDate),
-        ...shiftPerformanceRows.filter((row) => row.data === latestPerformanceDate),
+        ...dailyPerformanceActivityRows.filter((row) => row.data === latestPerformanceDate),
+        ...shiftPerformanceActivityRows.filter((row) => row.data === latestPerformanceDate),
       ]
     : [];
   const performanceRowsLast15Days = last15Start
     ? [
-        ...dailyPerformanceRows.filter((row) => row.data >= last15Start),
-        ...shiftPerformanceRows.filter((row) => row.data >= last15Start),
+        ...dailyPerformanceActivityRows.filter((row) => row.data >= last15Start),
+        ...shiftPerformanceActivityRows.filter((row) => row.data >= last15Start),
       ]
     : [];
-  const dailyPerformanceIndex = buildPerformanceIndex(dailyPerformanceRows);
-  const shiftPerformanceIndex = buildPerformanceIndex(shiftPerformanceRows);
+  const dailyPerformanceActivityIndex = buildPerformanceIndex(dailyPerformanceActivityRows);
+  const shiftPerformanceActivityIndex = buildPerformanceIndex(shiftPerformanceActivityRows);
+  const recentDailyPerformanceIndex = buildPerformanceIndex(recentDailyPerformanceRows);
+  const recentShiftPerformanceIndex = buildPerformanceIndex(recentShiftPerformanceRows);
   const hotZoneFilterActive = Boolean(selectedHotZone);
   const turnoFilterActive = Boolean(selectedTurno);
   const contextFilterActive = hotZoneFilterActive || turnoFilterActive;
   const couriersWithInsights = sortCouriers(
     couriers.map((courier) => {
-      const matchedDailyRows = getMatchedPerformanceRows(
+      const matchedDailyActivityRows = getMatchedPerformanceRows(
         courier,
-        dailyPerformanceIndex,
+        dailyPerformanceActivityIndex,
         (row) => [row.data, row.id_entregador || "", row.cpf_entregador || "", row.numero_telefone || ""].join("|"),
       );
-      const matchedShiftRows = getMatchedPerformanceRows(
+      const matchedShiftActivityRows = getMatchedPerformanceRows(
         courier,
-        shiftPerformanceIndex,
+        shiftPerformanceActivityIndex,
         (row) =>
           [
             row.data,
@@ -1255,7 +1562,25 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
             row.numero_telefone || "",
           ].join("|"),
       );
-      const contextShiftRows = matchedShiftRows.filter((row) => {
+      const matchedDailyRows = getMatchedPerformanceRows(
+        courier,
+        recentDailyPerformanceIndex,
+        (row) => [row.data, row.id_entregador || "", row.cpf_entregador || "", row.numero_telefone || ""].join("|"),
+      );
+      const matchedShiftRows = getMatchedPerformanceRows(
+        courier,
+        recentShiftPerformanceIndex,
+        (row) =>
+          [
+            row.data,
+            row.periodo_turno || "",
+            row.hot_zone || "",
+            row.id_entregador || "",
+            row.cpf_entregador || "",
+            row.numero_telefone || "",
+          ].join("|"),
+      );
+      const contextShiftRows = matchedShiftActivityRows.filter((row) => {
         const hotZoneMatches =
           !hotZoneFilterActive || normalizeSearchValue(row.hot_zone) === normalizeSearchValue(selectedHotZone);
         const turnoMatches =
@@ -1270,16 +1595,67 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
         !turnoFilterActive ||
         courier.preferred_shifts.includes(selectedTurno as BagShift) ||
         contextShiftRows.some((row) => getShiftKeyFromPerformancePeriod(row.periodo_turno) === selectedTurno);
-      const performance = buildCourierPerformanceSummary(matchedDailyRows, matchedShiftRows, latestPerformanceDate);
+      const performanceActivityRows = [
+        ...matchedDailyActivityRows,
+        ...matchedShiftActivityRows.map((row) => ({ data: row.data })),
+      ];
+      const performance = buildCourierPerformanceSummary(
+        performanceActivityRows,
+        matchedDailyRows,
+        matchedShiftRows,
+        latestPerformanceDate,
+      );
+      const contextShiftMetricRows = matchedShiftRows.filter((row) => {
+        const hotZoneMatches =
+          !hotZoneFilterActive || normalizeSearchValue(row.hot_zone) === normalizeSearchValue(selectedHotZone);
+        const turnoMatches =
+          !turnoFilterActive || getShiftKeyFromPerformancePeriod(row.periodo_turno) === selectedTurno;
+        return hotZoneMatches && turnoMatches;
+      });
       const listPerformance =
         contextFilterActive
-          ? buildCourierPerformanceSummary([], contextShiftRows, latestPerformanceDate)
+          ? buildCourierPerformanceSummary(
+              contextShiftRows.map((row) => ({ data: row.data })),
+              [],
+              contextShiftMetricRows,
+              latestPerformanceDate,
+            )
           : performance;
+      const dashboardDailyActivityRows = filterRowsByDateRange(
+        matchedDailyActivityRows,
+        selectedDashboardStart || null,
+        selectedDashboardEnd || null,
+      );
+      const dashboardShiftActivityRows = filterRowsByDateRange(
+        matchedShiftActivityRows,
+        selectedDashboardStart || null,
+        selectedDashboardEnd || null,
+      );
+      const dashboardDailyMetricRows = filterRowsByDateRange(
+        matchedDailyRows,
+        selectedDashboardStart || null,
+        selectedDashboardEnd || null,
+      );
+      const dashboardShiftMetricRows = filterRowsByDateRange(
+        matchedShiftRows,
+        selectedDashboardStart || null,
+        selectedDashboardEnd || null,
+      );
+      const dashboardPerformance = buildCourierPerformanceSummary(
+        [
+          ...dashboardDailyActivityRows,
+          ...dashboardShiftActivityRows.map((row) => ({ data: row.data })),
+        ],
+        dashboardDailyMetricRows,
+        dashboardShiftMetricRows,
+        selectedDashboardEnd || latestPerformanceDate,
+      );
 
       return {
         ...courier,
         performance,
         listPerformance,
+        dashboardPerformance,
         hasContextMatch: contextShiftRows.length > 0,
         matchesSelectedHotZone,
         matchesSelectedTurno,
@@ -1314,45 +1690,31 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
   const highlightedCandidates = couriersWithInsights
     .filter((courier) => courier.performance.tier === "bom")
     .slice(0, 3);
-  const dashboardDailyPerformanceIndex = buildPerformanceIndex(dashboardDailyRows);
-  const dashboardShiftPerformanceIndex = buildPerformanceIndex(dashboardShiftRows);
-  const dashboardCouriersWithInsights = couriers.map((courier) => {
-    const matchedDailyRows = getMatchedPerformanceRows(
-      courier,
-      dashboardDailyPerformanceIndex,
-      (row) => [row.data, row.id_entregador || "", row.cpf_entregador || "", row.numero_telefone || ""].join("|"),
-    );
-    const matchedShiftRows = getMatchedPerformanceRows(
-      courier,
-      dashboardShiftPerformanceIndex,
-      (row) =>
-        [
-          row.data,
-          row.periodo_turno || "",
-          row.hot_zone || "",
-          row.id_entregador || "",
-          row.cpf_entregador || "",
-          row.numero_telefone || "",
-        ].join("|"),
-    );
-
-    return buildCourierPerformanceSummary(matchedDailyRows, matchedShiftRows, selectedDashboardEnd || latestPerformanceDate);
-  });
-  const dashboardCouriersRunningInRange = dashboardCouriersWithInsights.filter(
-    (item) => item.hasPerformanceHistory,
+  const dashboardCouriersRunningInRange = couriersWithInsights.filter(
+    (item) => item.dashboardPerformance.hasPerformanceHistory,
   ).length;
-  const dashboardCouriersInactiveInRange = dashboardCouriersWithInsights.filter(
-    (item) => !item.hasPerformanceHistory,
+  const dashboardCouriersInactiveInRange = couriersWithInsights.filter(
+    (item) => !item.dashboardPerformance.hasPerformanceHistory,
   ).length;
-  const dashboardGoodCandidates = dashboardCouriersWithInsights.filter((item) => item.tier === "bom").length;
-  const dashboardAttentionCount = dashboardCouriersWithInsights.filter(
-    (item) => item.tier === "atencao" || item.tier === "parado",
+  const dashboardGoodCandidates = couriersWithInsights.filter(
+    (item) => item.dashboardPerformance.tier === "bom",
   ).length;
+  const dashboardAttentionCount = couriersWithInsights.filter(
+    (item) => item.dashboardPerformance.tier === "atencao" || item.dashboardPerformance.tier === "parado",
+  ).length;
+  const bagStatusCounts = couriersWithInsights.reduce<Record<string, number>>((acc, courier) => {
+    acc[courier.bag_status] = (acc[courier.bag_status] || 0) + 1;
+    return acc;
+  }, {});
   const bagStatusSummary = bagStatusesResult.data.map((status) => ({
     ...status,
-    count: couriersWithInsights.filter((courier) => courier.bag_status === status.slug).length,
+    count: bagStatusCounts[status.slug] || 0,
   }));
-  const activityTrend = buildDistinctCourierTrend(dashboardTrendDates, dashboardDailyRows, dashboardShiftRows);
+  const activityTrend = buildDistinctCourierTrend(
+    dashboardTrendDates,
+    dashboardDailyActivityRows,
+    dashboardShiftActivityRows,
+  );
   const tshTrend = buildMetricTrend(dashboardTrendDates, dashboardDailyRows, dashboardShiftRows, "tsh");
   const arTrend = buildMetricTrend(dashboardTrendDates, dashboardDailyRows, dashboardShiftRows, "ar");
   const caaTrend = buildMetricTrend(dashboardTrendDates, dashboardDailyRows, dashboardShiftRows, "caa");

@@ -113,6 +113,12 @@ export default async function EditarUsuarioPage({
           action={updateTenantUserAction}
           submitLabel="Salvar alteracoes"
           initialValues={tenantUser}
+          canManageOwner={currentUser.is_platform_admin || currentUser.membership?.role === "owner"}
+          ownerLocked={
+            tenantUser.base_profile === "owner" &&
+            !currentUser.is_platform_admin &&
+            currentUser.membership?.role !== "owner"
+          }
         />
       </section>
     </AppShell>
