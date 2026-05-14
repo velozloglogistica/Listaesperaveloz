@@ -78,15 +78,15 @@ select {
 
 .sidebar-brand-mark {
   display: grid;
-  grid-template-columns: 84px minmax(0, 1fr);
+  grid-template-columns: 104px minmax(0, 1fr);
   align-items: center;
-  gap: 14px;
+  gap: 10px;
 }
 
 .sidebar-brand-logo {
   display: block;
-  width: 84px;
-  height: 84px;
+  width: 104px;
+  height: 104px;
   object-fit: contain;
   object-position: center;
   background: transparent;
@@ -104,7 +104,7 @@ select {
 .sidebar-brand-mark strong {
   margin: 0;
   display: block;
-  font-size: 18px;
+  font-size: 16px;
   letter-spacing: 0.02em;
   line-height: 1;
   white-space: nowrap;
@@ -113,7 +113,7 @@ select {
 .sidebar-brand-mark p {
   margin: 0;
   color: #6ee7df;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
 }
@@ -1576,12 +1576,12 @@ select:disabled {
   }
 
   .sidebar-brand-mark {
-    grid-template-columns: 72px minmax(0, 1fr);
+    grid-template-columns: 80px minmax(0, 1fr);
   }
 
   .sidebar-brand-logo {
-    width: 72px;
-    height: 72px;
+    width: 80px;
+    height: 80px;
   }
 
   .overview-grid,
