@@ -81,15 +81,12 @@ select {
 }
 
 .sidebar-brand-logo {
-  display: grid;
-  place-items: center;
+  display: block;
   width: 44px;
   height: 44px;
   border-radius: 14px;
-  background: linear-gradient(135deg, #14b8a6 0%, #0f766e 100%);
-  color: #ffffff;
-  font-size: 22px;
-  font-weight: 800;
+  object-fit: cover;
+  background: #0f766e;
   box-shadow: 0 14px 28px rgba(20, 184, 166, 0.25);
 }
 
