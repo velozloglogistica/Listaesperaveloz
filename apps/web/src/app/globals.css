@@ -515,13 +515,15 @@ select {
 }
 
 .courier-toolbar-row-primary {
-  grid-template-columns: minmax(320px, 1.6fr) minmax(220px, 0.8fr);
+  grid-template-columns: minmax(340px, 1.7fr) minmax(240px, 0.9fr);
 }
 
 .courier-toolbar-row-secondary {
-  grid-template-columns:
-    repeat(4, minmax(180px, 1fr))
-    auto;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+}
+
+.courier-toolbar-row-tertiary {
+  grid-template-columns: minmax(220px, 280px) auto;
 }
 
 .courier-search-input {
@@ -534,9 +536,9 @@ select {
 
 .courier-filter-panel {
   display: grid;
-  grid-template-columns: minmax(220px, 0.75fr) minmax(0, 1.45fr);
-  gap: 18px;
-  align-items: end;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  align-items: stretch;
   margin-top: 18px;
   padding: 18px;
   border: 1px solid var(--border);
@@ -547,6 +549,7 @@ select {
 .courier-filter-copy {
   display: grid;
   gap: 8px;
+  max-width: 760px;
 }
 
 .courier-filter-copy strong {
@@ -576,6 +579,10 @@ select {
   align-items: center;
   justify-content: flex-end;
   flex-wrap: wrap;
+}
+
+.courier-toolbar-row-tertiary .courier-toolbar-actions {
+  min-height: 100%;
 }
 
 .courier-reset-button {
@@ -1537,6 +1544,10 @@ select:disabled {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .courier-toolbar-row-tertiary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .courier-toolbar-actions {
     grid-column: 1 / -1;
     justify-content: flex-start;
@@ -1626,7 +1637,8 @@ select:disabled {
   }
 
   .courier-toolbar-row-primary,
-  .courier-toolbar-row-secondary {
+  .courier-toolbar-row-secondary,
+  .courier-toolbar-row-tertiary {
     grid-template-columns: 1fr;
   }
 
