@@ -1160,6 +1160,22 @@ select:disabled {
   font-size: 13px;
 }
 
+.courier-filter-status {
+  display: inline-flex;
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.12);
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.courier-filter-status-pending {
+  background: rgba(148, 163, 184, 0.16);
+  color: var(--muted);
+}
+
 .user-card {
   display: flex;
   align-items: center;
