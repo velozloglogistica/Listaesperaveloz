@@ -3,7 +3,11 @@
 import { redirect } from "next/navigation";
 
 import { MODULE_CATALOG, PERMISSION_CATALOG } from "@/lib/access-config";
-import { requireHierarchyManagementAccess, requireUserManagementAccess } from "@/lib/auth";
+import {
+  requireHierarchyManagementAccess,
+  requireUserManagementAccess,
+  type AppUser,
+} from "@/lib/auth";
 import { getTenantEnabledModules, isCompanyAccessSchemaMissing } from "@/lib/company-access";
 import { supabaseServer } from "@/lib/supabase-server";
 
@@ -18,6 +22,25 @@ function normalizeEmail(value: string) {
 
 function validPassword(value: string) {
   return value.length >= 8;
+}
+
+function canManageOwnerAccess(actor: AppUser) {
+  return actor.is_platform_admin || actor.membership?.role === "owner";
+}
+
+async function countActiveOwners(tenantId: string) {
+  const { count, error } = await supabaseServer
+    .from("tenant_memberships")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .eq("role", "owner")
+    .eq("is_active", true);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return count || 0;
 }
 
 function inferMembershipRole(permissionKeys: string[]) {
@@ -347,6 +370,13 @@ export async function createTenantUserWithHierarchyAction(
     };
   }
 
+  if (baseProfile === "owner" && !canManageOwnerAccess(actor)) {
+    return {
+      status: "error",
+      message: "Somente owner da empresa pode conceder acesso de owner.",
+    };
+  }
+
   let selectedHierarchyPermissions: string[] = [];
   let selectedHierarchyModules: string[] = [];
 
@@ -532,7 +562,7 @@ export async function updateTenantUserAction(
 
   const { data: existingMembership, error: existingMembershipError } = await supabaseServer
     .from("tenant_memberships")
-    .select("user_id")
+    .select("user_id,role,is_active")
     .eq("tenant_id", tenantId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -542,6 +572,41 @@ export async function updateTenantUserAction(
       status: "error",
       message: existingMembershipError?.message || "Usuario nao encontrado nessa empresa.",
     };
+  }
+
+  const targetIsOwner = existingMembership.role === "owner";
+  const actorCanManageOwners = canManageOwnerAccess(actor);
+
+  if (targetIsOwner && !actorCanManageOwners) {
+    return {
+      status: "error",
+      message: "Somente owner da empresa pode editar o acesso de outro owner.",
+    };
+  }
+
+  if (!targetIsOwner && baseProfile === "owner" && !actorCanManageOwners) {
+    return {
+      status: "error",
+      message: "Somente owner da empresa pode promover um usuario para owner.",
+    };
+  }
+
+  if (actor.id === userId && targetIsOwner && baseProfile !== "owner") {
+    return {
+      status: "error",
+      message: "Nao e permitido remover o proprio acesso de owner por essa tela.",
+    };
+  }
+
+  if (targetIsOwner && (!isActive || baseProfile !== "owner")) {
+    const activeOwnerCount = await countActiveOwners(tenantId);
+
+    if (activeOwnerCount <= 1 && existingMembership.is_active) {
+      return {
+        status: "error",
+        message: "A empresa precisa manter pelo menos um owner ativo.",
+      };
+    }
   }
 
   let selectedHierarchyPermissions: string[] = [];

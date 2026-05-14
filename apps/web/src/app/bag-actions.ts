@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 
 import {
@@ -27,6 +27,10 @@ const bagSchemaMessage =
 const allowedVehicles = new Set<BagVehicle>(BAG_VEHICLE_OPTIONS.map((option) => option.value));
 const allowedShifts = new Set<BagShift>(BAG_SHIFT_OPTIONS.map((option) => option.value));
 const allowedWeekdays = new Set<BagWeekday>(BAG_WEEKDAY_OPTIONS.map((option) => option.value));
+
+function revalidateBagInfoCache(tenantId: string) {
+  revalidateTag(`bag-info:${tenantId}`);
+}
 
 function sanitizeDigits(value: string) {
   return value.replace(/\D/g, "");
@@ -102,6 +106,7 @@ export async function createTenantCityAction(
 
   revalidatePath("/informacoes-bag");
   revalidatePath("/perfil-empresa");
+  revalidateBagInfoCache(tenantId);
 
   return {
     status: "success",
@@ -167,6 +172,7 @@ export async function createTenantRegionAction(
 
   revalidatePath("/informacoes-bag");
   revalidatePath("/perfil-empresa");
+  revalidateBagInfoCache(tenantId);
 
   return {
     status: "success",
@@ -376,6 +382,7 @@ export async function createBagCourierAction(
   }
 
   revalidatePath("/informacoes-bag");
+  revalidateBagInfoCache(tenantId);
 
   return {
     status: "success",
@@ -405,4 +412,5 @@ export async function updateBagCourierStatus(formData: FormData) {
   }
 
   revalidatePath("/informacoes-bag");
+  revalidateBagInfoCache(tenantId);
 }

@@ -34,6 +34,8 @@ type TenantUserFormProps = {
     hierarchy_id?: string;
     is_active?: boolean;
   };
+  canManageOwner?: boolean;
+  ownerLocked?: boolean;
 };
 
 export function TenantUserForm({
@@ -41,11 +43,14 @@ export function TenantUserForm({
   action = createTenantUserWithHierarchyAction,
   submitLabel = "Criar usuario",
   initialValues,
+  canManageOwner = true,
+  ownerLocked = false,
 }: TenantUserFormProps) {
   const [state, formAction] = useActionState(action, initialState);
+  const isOwnerProfile = initialValues?.base_profile === "owner";
 
   const profileProps =
-    initialValues?.base_profile === "owner"
+    isOwnerProfile
       ? ({ defaultValue: "owner" } satisfies Pick<
           ComponentProps<"select">,
           "defaultValue"
@@ -62,6 +67,7 @@ export function TenantUserForm({
         name="full_name"
         placeholder="Nome completo"
         defaultValue={initialValues?.full_name || ""}
+        disabled={ownerLocked}
         required
       />
 
@@ -71,6 +77,7 @@ export function TenantUserForm({
         name="email"
         placeholder="Email de acesso"
         defaultValue={initialValues?.email || ""}
+        disabled={ownerLocked}
         required
       />
 
@@ -80,10 +87,16 @@ export function TenantUserForm({
         name="password"
         placeholder={initialValues?.user_id ? "Nova senha (opcional)" : "Senha inicial"}
         minLength={initialValues?.user_id ? undefined : 8}
+        disabled={ownerLocked}
         required={!initialValues?.user_id}
       />
 
-      <select className="select-input" name="base_profile" {...profileProps}>
+      <select
+        className="select-input"
+        name="base_profile"
+        {...profileProps}
+        disabled={ownerLocked || !canManageOwner}
+      >
         <option value="member">Usuario da empresa</option>
         <option value="owner">Owner da empresa</option>
       </select>
@@ -92,6 +105,7 @@ export function TenantUserForm({
         className="select-input"
         name="hierarchy_id"
         defaultValue={initialValues?.hierarchy_id || ""}
+        disabled={ownerLocked || isOwnerProfile}
       >
         <option value="">Selecione a hierarquia</option>
         {hierarchies.map((hierarchy) => (
@@ -109,13 +123,32 @@ export function TenantUserForm({
         </p>
       </div>
 
+      {!canManageOwner ? (
+        <div className="platform-form-note platform-form-note-warning">
+          <strong>Owner protegido</strong>
+          <p>Somente owner da empresa pode conceder ou remover acesso de owner.</p>
+        </div>
+      ) : null}
+
+      {ownerLocked ? (
+        <div className="platform-form-note platform-form-note-warning">
+          <strong>Edicao bloqueada</strong>
+          <p>Este usuario e owner. Apenas outro owner pode alterar esse acesso.</p>
+        </div>
+      ) : null}
+
       <label className="checkbox-card">
-        <input type="checkbox" name="is_active" defaultChecked={initialValues?.is_active ?? true} />
+        <input
+          type="checkbox"
+          name="is_active"
+          defaultChecked={initialValues?.is_active ?? true}
+          disabled={ownerLocked}
+        />
         <span>Usuario ativo</span>
       </label>
 
       <div className="manual-form-actions">
-        <button type="submit" className="primary-button">
+        <button type="submit" className="primary-button" disabled={ownerLocked}>
           {submitLabel}
         </button>
       </div>

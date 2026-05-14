@@ -179,7 +179,10 @@ export default async function UsuariosPage() {
                 </p>
               </div>
             </div>
-            <TenantUserForm hierarchies={hierarchyResult.data} />
+            <TenantUserForm
+              hierarchies={hierarchyResult.data}
+              canManageOwner={currentUser.is_platform_admin || currentUser.membership?.role === "owner"}
+            />
           </section>
 
           <section className="panel">
