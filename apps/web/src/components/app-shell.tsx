@@ -106,7 +106,11 @@ export function AppShell({ currentPath, title, description, user, children }: Ap
       <aside className="app-sidebar">
         <div className="sidebar-brand">
           <div className="sidebar-brand-mark">
-            <span className="sidebar-brand-logo">V</span>
+            <img
+              src="https://raw.githubusercontent.com/velozloglogistica/Listaesperaveloz/main/convidados%20(84).png"
+              alt="Logo da Veloz"
+              className="sidebar-brand-logo"
+            />
             <div>
               <strong>VELOZLOG</strong>
               <p>SaaS</p>
