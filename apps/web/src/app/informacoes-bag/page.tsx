@@ -2182,6 +2182,8 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
                       </option>
                     ))}
                   </select>
+                </div>
+                <div className="courier-toolbar-row courier-toolbar-row-tertiary">
                   <select
                     name="ordenacao"
                     defaultValue={rankingOrder}
