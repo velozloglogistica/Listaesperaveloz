@@ -212,42 +212,10 @@ const RANKING_ORDER_LABELS: Record<RankingOrder, string> = {
 
 const SUPABASE_PAGE_SIZE = 1000;
 const BAG_INFO_CACHE_SECONDS = 60;
+const COURIER_ACTIVITY_LOOKBACK_DAYS = 120;
 
 function getBagInfoCacheTag(tenantId: string) {
   return `bag-info:${tenantId}`;
-}
-
-async function fetchAllTenantRows<T>(
-  table: string,
-  columns: string,
-  tenantId: string,
-): Promise<T[]> {
-  const rows: T[] = [];
-  let from = 0;
-
-  while (true) {
-    const { data, error } = await supabaseServer
-      .from(table)
-      .select(columns)
-      .eq("tenant_id", tenantId)
-      .order("data", { ascending: false })
-      .range(from, from + SUPABASE_PAGE_SIZE - 1);
-
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    const batch = (data || []) as T[];
-    rows.push(...batch);
-
-    if (batch.length < SUPABASE_PAGE_SIZE) {
-      break;
-    }
-
-    from += SUPABASE_PAGE_SIZE;
-  }
-
-  return rows;
 }
 
 async function fetchTenantRowsByDateRange<T>(
@@ -451,18 +419,26 @@ async function getCachedTenantBagStatuses(tenantId: string) {
 
 async function getDailyPerformanceActivityRows(
   tenantId: string,
+  startDate: string,
+  endDate: string,
 ): Promise<DailyPerformanceActivityRow[]> {
-  return fetchAllTenantRows<DailyPerformanceRow>(
+  return fetchTenantRowsByDateRange<DailyPerformanceActivityRow>(
     "performance_por_entregador_diario",
     "data,id_entregador,cpf_entregador,nome_entregador,numero_telefone",
     tenantId,
+    startDate,
+    endDate,
   );
 }
 
-async function getCachedDailyPerformanceActivityRows(tenantId: string) {
+async function getCachedDailyPerformanceActivityRows(
+  tenantId: string,
+  startDate: string,
+  endDate: string,
+) {
   return unstable_cache(
-    async () => getDailyPerformanceActivityRows(tenantId),
-    [`bag-info-daily-activity-${tenantId}`],
+    async () => getDailyPerformanceActivityRows(tenantId, startDate, endDate),
+    [`bag-info-daily-activity-${tenantId}-${startDate}-${endDate}`],
     {
       revalidate: BAG_INFO_CACHE_SECONDS,
       tags: [getBagInfoCacheTag(tenantId)],
@@ -472,18 +448,26 @@ async function getCachedDailyPerformanceActivityRows(tenantId: string) {
 
 async function getShiftPerformanceActivityRows(
   tenantId: string,
+  startDate: string,
+  endDate: string,
 ): Promise<ShiftPerformanceActivityRow[]> {
-  return fetchAllTenantRows<ShiftPerformanceActivityRow>(
+  return fetchTenantRowsByDateRange<ShiftPerformanceActivityRow>(
     "performance_por_turno_diario",
     "data,periodo_turno,hot_zone,id_entregador,cpf_entregador,nome_entregador,numero_telefone",
     tenantId,
+    startDate,
+    endDate,
   );
 }
 
-async function getCachedShiftPerformanceActivityRows(tenantId: string) {
+async function getCachedShiftPerformanceActivityRows(
+  tenantId: string,
+  startDate: string,
+  endDate: string,
+) {
   return unstable_cache(
-    async () => getShiftPerformanceActivityRows(tenantId),
-    [`bag-info-shift-activity-${tenantId}`],
+    async () => getShiftPerformanceActivityRows(tenantId, startDate, endDate),
+    [`bag-info-shift-activity-${tenantId}-${startDate}-${endDate}`],
     {
       revalidate: BAG_INFO_CACHE_SECONDS,
       tags: [getBagInfoCacheTag(tenantId)],
@@ -1519,16 +1503,9 @@ async function buildEntregadoresAnalytics(
   selectedDashboardStart: string,
   selectedDashboardEnd: string,
 ): Promise<EntregadoresAnalyticsPayload> {
-  const [
-    couriersResult,
-    latestPerformanceDate,
-    dailyPerformanceActivityRows,
-    shiftPerformanceActivityRows,
-  ] = await Promise.all([
+  const [couriersResult, latestPerformanceDate] = await Promise.all([
     getCachedBagCouriers(tenantId),
     getCachedLatestPerformanceDateForTenant(tenantId),
-    getCachedDailyPerformanceActivityRows(tenantId),
-    getCachedShiftPerformanceActivityRows(tenantId),
   ]);
 
   if (!couriersResult.foundationReady) {
@@ -1551,18 +1528,32 @@ async function buildEntregadoresAnalytics(
   }
 
   const last15Start = latestPerformanceDate ? subtractDaysFromIsoDate(latestPerformanceDate, 14) : null;
+  const activityWindowStart = pickEarliestDate([
+    selectedDashboardStart,
+    latestPerformanceDate
+      ? subtractDaysFromIsoDate(latestPerformanceDate, COURIER_ACTIVITY_LOOKBACK_DAYS - 1)
+      : null,
+  ]);
+  const activityWindowEnd = pickLatestDate([selectedDashboardEnd, latestPerformanceDate]);
   const recentPerformanceStart = pickEarliestDate([
     selectedDashboardStart,
     latestPerformanceDate ? subtractDaysFromIsoDate(latestPerformanceDate, 29) : null,
   ]);
   const recentPerformanceEnd = pickLatestDate([selectedDashboardEnd, latestPerformanceDate]);
-  const [recentDailyPerformanceRows, recentShiftPerformanceRows] =
-    recentPerformanceStart && recentPerformanceEnd
+  const [
+    dailyPerformanceActivityRows,
+    shiftPerformanceActivityRows,
+    recentDailyPerformanceRows,
+    recentShiftPerformanceRows,
+  ] =
+    activityWindowStart && activityWindowEnd && recentPerformanceStart && recentPerformanceEnd
       ? await Promise.all([
+          getCachedDailyPerformanceActivityRows(tenantId, activityWindowStart, activityWindowEnd),
+          getCachedShiftPerformanceActivityRows(tenantId, activityWindowStart, activityWindowEnd),
           getCachedDailyPerformanceRows(tenantId, recentPerformanceStart, recentPerformanceEnd),
           getCachedShiftPerformanceRows(tenantId, recentPerformanceStart, recentPerformanceEnd),
         ])
-      : [[], []];
+      : [[], [], [], []];
   const dashboardDailyRows = filterRowsByDateRange(
     recentDailyPerformanceRows,
     selectedDashboardStart || null,
