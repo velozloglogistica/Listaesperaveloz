@@ -2156,6 +2156,10 @@ async function EntregadoresContent({
         initialTurno={selectedTurno}
         initialOperationalFilter={operationalFilter}
         initialRankingOrder={rankingOrder}
+        initialDataInicio={selectedDashboardStart}
+        initialDataFim={selectedDashboardEnd}
+        defaultDataInicio={defaultDashboardStart}
+        defaultDataFim={defaultDashboardEnd}
         createEnabled={
           citiesResult.data.length > 0 &&
           regionsResult.data.length > 0 &&
