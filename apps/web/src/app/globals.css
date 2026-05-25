@@ -1362,6 +1362,116 @@ select:disabled {
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
 }
 
+.notification-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.notification-summary-card {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbfd 100%);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
+}
+
+.notification-summary-card span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.notification-summary-card strong {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.notification-feed {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.notification-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: linear-gradient(180deg, #ffffff 0%, #f9fcff 100%);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+}
+
+.notification-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.notification-card-top p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.notification-meta-stack {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+.notification-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.notification-reason-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid #f7c9cc;
+  background: linear-gradient(180deg, #fff5f5 0%, #fff0f1 100%);
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.notification-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.notification-metrics span {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+}
+
+.notification-metrics strong {
+  font-size: 12px;
+}
+
+.notification-metrics span span {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .board-sections {
   display: grid;
   gap: 18px;
@@ -1814,6 +1924,20 @@ select:disabled {
     max-width: none;
   }
 
+  .notification-summary-grid,
+  .notification-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .notification-card-top {
+    flex-direction: column;
+  }
+
+  .notification-meta-stack {
+    justify-items: start;
+    text-align: left;
+  }
+
 
   .entregadores-loading-notes,
   .entregadores-loading-chart-grid,
@@ -1945,6 +2069,12 @@ select:disabled {
   .courier-performance-grid {
     grid-template-columns: 1fr;
   }
+
+  .notification-summary-grid,
+  .notification-metrics {
+    grid-template-columns: 1fr;
+  }
+
 
   .trend-axis {
     grid-template-columns: repeat(4, minmax(0, 1fr));

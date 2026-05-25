@@ -158,6 +158,39 @@ type TrendPoint = {
   value: number;
 };
 
+type PerformanceAlertReasonKey =
+  | "tsh_baixo"
+  | "ar_baixo"
+  | "ar_zerado"
+  | "caa_alto"
+  | "overtime_alto";
+
+type PerformanceAlertReason = {
+  key: PerformanceAlertReasonKey;
+  label: string;
+};
+
+type PerformanceNotificationSeverity = "critico" | "alto" | "moderado";
+
+type PerformanceNotificationView = {
+  id: string;
+  date: string;
+  courierId: string;
+  courierName: string;
+  phoneNumber: string | null;
+  bagStatus: BagStatus;
+  operatorName: string;
+  hotZone: string | null;
+  turno: BagShift | null;
+  totalOrders: number;
+  avgTsh: number | null;
+  avgAr: number | null;
+  avgCaa: number | null;
+  avgOvertime: number | null;
+  reasons: PerformanceAlertReason[];
+  severity: PerformanceNotificationSeverity;
+};
+
 type RankingOrder = "melhor_pior" | "pior_melhor" | "mais_recente" | "mais_parado";
 
 type BagCourierInsightView = BagCourierView & {
@@ -208,6 +241,18 @@ const RANKING_ORDER_LABELS: Record<RankingOrder, string> = {
   pior_melhor: "Pior para melhor",
   mais_recente: "Rodou mais recente",
   mais_parado: "Mais parado primeiro",
+};
+
+const PERFORMANCE_NOTIFICATION_SEVERITY_LABELS: Record<PerformanceNotificationSeverity, string> = {
+  critico: "Critico",
+  alto: "Alto risco",
+  moderado: "Acompanhar",
+};
+
+const PERFORMANCE_NOTIFICATION_SEVERITY_CLASS_NAMES: Record<PerformanceNotificationSeverity, string> = {
+  critico: "day-chip-danger",
+  alto: "day-chip-warning",
+  moderado: "day-chip-info",
 };
 
 const SUPABASE_PAGE_SIZE = 1000;
@@ -1288,6 +1333,140 @@ function buildCourierContextPerformances(
   }));
 }
 
+function buildPerformanceAlertReasons(values: {
+  totalOrders: number;
+  avgTsh: number | null;
+  avgAr: number | null;
+  avgCaa: number | null;
+  avgOvertime: number | null;
+}): PerformanceAlertReason[] {
+  if (values.totalOrders < 1) {
+    return [];
+  }
+
+  const reasons: PerformanceAlertReason[] = [];
+
+  if (values.avgAr !== null && values.avgAr === 0) {
+    reasons.push({
+      key: "ar_zerado",
+      label: "AR zerado",
+    });
+  } else if (values.avgAr !== null && values.avgAr < 60) {
+    reasons.push({
+      key: "ar_baixo",
+      label: `AR baixo (${formatMetricLabel(values.avgAr)})`,
+    });
+  }
+
+  if (values.avgTsh !== null && values.avgTsh < 60) {
+    reasons.push({
+      key: "tsh_baixo",
+      label: `TSH baixo (${formatMetricLabel(values.avgTsh)})`,
+    });
+  }
+
+  if (values.avgCaa !== null && values.avgCaa > 30) {
+    reasons.push({
+      key: "caa_alto",
+      label: `CAA alto (${formatMetricLabel(values.avgCaa, { reverse: true })})`,
+    });
+  }
+
+  if (values.avgOvertime !== null && values.avgOvertime > 20) {
+    reasons.push({
+      key: "overtime_alto",
+      label: `Overtime alto (${formatMetricLabel(values.avgOvertime, { reverse: true })})`,
+    });
+  }
+
+  return reasons;
+}
+
+function getPerformanceNotificationSeverity(
+  reasons: PerformanceAlertReason[],
+): PerformanceNotificationSeverity {
+  if (reasons.some((reason) => reason.key === "ar_zerado") || reasons.length >= 3) {
+    return "critico";
+  }
+
+  if (reasons.length >= 2) {
+    return "alto";
+  }
+
+  return "moderado";
+}
+
+function buildLatestPerformanceNotification(
+  courier: BagCourierView,
+  dailyRows: DailyPerformanceRow[],
+  shiftRows: ShiftPerformanceRow[],
+): PerformanceNotificationView | null {
+  const candidates = [
+    ...shiftRows.map((row) => ({
+      date: row.data,
+      hotZone: String(row.hot_zone || "").replace(/\s+/g, " ").trim() || null,
+      turno: getShiftKeyFromPerformancePeriod(row.periodo_turno),
+      totalOrders: parseNumber(row.pedidos_finalizados) || 0,
+      avgTsh: normalizePercentMetric(row.tsh),
+      avgAr: normalizePercentMetric(row.ar),
+      avgCaa: normalizePercentMetric(row.caa),
+      avgOvertime: normalizePercentMetric(row.overtime),
+      sourceWeight: 2,
+    })),
+    ...dailyRows.map((row) => ({
+      date: row.data,
+      hotZone: null,
+      turno: null,
+      totalOrders: parseNumber(row.pedidos_finalizados) || 0,
+      avgTsh: normalizePercentMetric(row.tsh),
+      avgAr: normalizePercentMetric(row.ar),
+      avgCaa: normalizePercentMetric(row.caa),
+      avgOvertime: normalizePercentMetric(row.overtime),
+      sourceWeight: 1,
+    })),
+  ].sort((left, right) => {
+    if (left.date !== right.date) {
+      return left.date < right.date ? 1 : -1;
+    }
+
+    return right.sourceWeight - left.sourceWeight;
+  });
+
+  for (const candidate of candidates) {
+    const reasons = buildPerformanceAlertReasons(candidate);
+
+    if (reasons.length === 0) {
+      continue;
+    }
+
+    return {
+      id: [
+        courier.id,
+        candidate.date,
+        candidate.hotZone || "sem-hotzone",
+        candidate.turno || "sem-turno",
+      ].join("|"),
+      date: candidate.date,
+      courierId: courier.id,
+      courierName: courier.full_name,
+      phoneNumber: courier.phone_number || null,
+      bagStatus: courier.bag_status,
+      operatorName: courier.operator_name,
+      hotZone: candidate.hotZone,
+      turno: candidate.turno,
+      totalOrders: candidate.totalOrders,
+      avgTsh: candidate.avgTsh,
+      avgAr: candidate.avgAr,
+      avgCaa: candidate.avgCaa,
+      avgOvertime: candidate.avgOvertime,
+      reasons,
+      severity: getPerformanceNotificationSeverity(reasons),
+    };
+  }
+
+  return null;
+}
+
 function matchesOperationalFilter(courier: BagCourierInsightView, filter: OperationalFilter) {
   const base = courier.listPerformance;
 
@@ -1443,6 +1622,7 @@ type InformacoesBagSearchParams = {
   ordenacao?: string | string[];
   data_inicio?: string | string[];
   data_fim?: string | string[];
+  painel?: string | string[];
 };
 
 type InformacoesBagPageProps = {
@@ -1464,10 +1644,37 @@ type EntregadoresAnalyticsPayload = {
   arTrend: TrendPoint[];
   caaTrend: TrendPoint[];
   overtimeTrend: TrendPoint[];
+  recentNotifications: PerformanceNotificationView[];
+  notificationCriticalCount: number;
+  notificationArZeroCount: number;
+  notificationCaaHighCount: number;
 };
 
 function getCacheKeyPart(value: string | null | undefined) {
   return normalizeSearchValue(value || "") || "all";
+}
+
+function buildInformacoesBagHref(params: {
+  busca?: string;
+  situacao?: string;
+  status_bag?: string;
+  hotzone?: string;
+  turno?: string;
+  ordenacao?: string;
+  data_inicio?: string;
+  data_fim?: string;
+  painel?: string;
+}) {
+  const searchParams = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value) {
+      searchParams.set(key, value);
+    }
+  }
+
+  const queryString = searchParams.toString();
+  return queryString ? `/informacoes-bag?${queryString}` : "/informacoes-bag";
 }
 
 async function getLatestPerformanceDateFromTable(table: string, tenantId: string) {
@@ -1509,6 +1716,7 @@ async function buildEntregadoresAnalytics(
   tenantId: string,
   selectedDashboardStart: string,
   selectedDashboardEnd: string,
+  includePerformanceView: boolean,
 ): Promise<EntregadoresAnalyticsPayload> {
   const [couriersResult, latestPerformanceDate] = await Promise.all([
     getCachedBagCouriers(tenantId),
@@ -1531,6 +1739,10 @@ async function buildEntregadoresAnalytics(
       arTrend: [],
       caaTrend: [],
       overtimeTrend: [],
+      recentNotifications: [],
+      notificationCriticalCount: 0,
+      notificationArZeroCount: 0,
+      notificationCaaHighCount: 0,
     };
   }
 
@@ -1602,6 +1814,7 @@ async function buildEntregadoresAnalytics(
   let dashboardCouriersRunningInRange = 0;
   let dashboardGoodCandidates = 0;
   let dashboardAttentionCount = 0;
+  const recentNotifications: PerformanceNotificationView[] = [];
   const dashboardRangeStart = selectedDashboardStart || null;
   const dashboardRangeEnd = selectedDashboardEnd || null;
   const couriersWithInsights = couriersResult.data.map((courier) => {
@@ -1657,6 +1870,9 @@ async function buildEntregadoresAnalytics(
       latestPerformanceDate,
     );
     const listPerformance = performance;
+    const latestNotification = includePerformanceView
+      ? buildLatestPerformanceNotification(courier, matchedDailyRows, matchedShiftRows)
+      : null;
     const hasDashboardActivity =
       matchedDailyActivityRows.some(
         (row) =>
@@ -1681,6 +1897,10 @@ async function buildEntregadoresAnalytics(
       dashboardAttentionCount += 1;
     }
 
+    if (latestNotification) {
+      recentNotifications.push(latestNotification);
+    }
+
     return {
       ...courier,
       performance,
@@ -1688,6 +1908,28 @@ async function buildEntregadoresAnalytics(
       contextPerformances,
     };
   });
+  const sortedRecentNotifications = recentNotifications.sort((left, right) => {
+    if (left.date !== right.date) {
+      return left.date < right.date ? 1 : -1;
+    }
+
+    const severityWeight = {
+      critico: 3,
+      alto: 2,
+      moderado: 1,
+    } as const;
+
+    return severityWeight[right.severity] - severityWeight[left.severity];
+  });
+  const notificationCriticalCount = sortedRecentNotifications.filter(
+    (notification) => notification.severity === "critico",
+  ).length;
+  const notificationArZeroCount = sortedRecentNotifications.filter((notification) =>
+    notification.reasons.some((reason) => reason.key === "ar_zerado"),
+  ).length;
+  const notificationCaaHighCount = sortedRecentNotifications.filter((notification) =>
+    notification.reasons.some((reason) => reason.key === "caa_alto"),
+  ).length;
 
   return {
     foundationReady: true,
@@ -1708,6 +1950,10 @@ async function buildEntregadoresAnalytics(
     arTrend: buildMetricTrend(dashboardTrendDates, dashboardDailyRows, dashboardShiftRows, "ar"),
     caaTrend: buildMetricTrend(dashboardTrendDates, dashboardDailyRows, dashboardShiftRows, "caa"),
     overtimeTrend: buildMetricTrend(dashboardTrendDates, dashboardDailyRows, dashboardShiftRows, "overtime"),
+    recentNotifications: sortedRecentNotifications.slice(0, 12),
+    notificationCriticalCount,
+    notificationArZeroCount,
+    notificationCaaHighCount,
   };
 }
 
@@ -1715,6 +1961,7 @@ async function getCachedEntregadoresAnalytics(
   tenantId: string,
   selectedDashboardStart: string,
   selectedDashboardEnd: string,
+  includePerformanceView: boolean,
 ) {
   return unstable_cache(
     async () =>
@@ -1722,9 +1969,10 @@ async function getCachedEntregadoresAnalytics(
         tenantId,
         selectedDashboardStart,
         selectedDashboardEnd,
+        includePerformanceView,
       ),
     [
-      `bag-info-analytics-${tenantId}-${selectedDashboardStart}-${selectedDashboardEnd}`,
+      `bag-info-analytics-${tenantId}-${selectedDashboardStart}-${selectedDashboardEnd}-${includePerformanceView ? "performance" : "default"}`,
     ],
     {
       revalidate: BAG_INFO_CACHE_SECONDS,
@@ -1857,6 +2105,10 @@ async function EntregadoresContent({
     typeof parsedSearchParams?.data_fim === "string"
       ? parsedSearchParams.data_fim
       : parsedSearchParams?.data_fim?.[0] || "";
+  const rawPainel =
+    typeof parsedSearchParams?.painel === "string"
+      ? parsedSearchParams.painel
+      : parsedSearchParams?.painel?.[0] || "";
   const operationalFilter = (Object.keys(OPERATIONAL_FILTER_LABELS) as OperationalFilter[]).includes(
     rawOperationalFilter as OperationalFilter,
   )
@@ -1883,6 +2135,7 @@ async function EntregadoresContent({
     rawDataFim && (!selectedDashboardStart || rawDataFim >= selectedDashboardStart)
       ? rawDataFim
       : defaultDashboardEnd;
+  const showPerformanceView = rawPainel === "performance";
   const availableHotZones = Array.from(
     new Set(
       regionsResult.data.map((region) => region.name).sort((a, b) => a.localeCompare(b, "pt-BR")),
@@ -1895,6 +2148,7 @@ async function EntregadoresContent({
     tenantId,
     selectedDashboardStart,
     selectedDashboardEnd,
+    showPerformanceView,
   );
   const foundationReadyWithCouriers = foundationReady && analytics.foundationReady;
   const couriersWithInsights = analytics.couriersWithInsights;
@@ -1920,6 +2174,31 @@ async function EntregadoresContent({
   const arTrend = analytics.arTrend;
   const caaTrend = analytics.caaTrend;
   const overtimeTrend = analytics.overtimeTrend;
+  const recentNotifications = analytics.recentNotifications;
+  const notificationCriticalCount = analytics.notificationCriticalCount;
+  const notificationArZeroCount = analytics.notificationArZeroCount;
+  const notificationCaaHighCount = analytics.notificationCaaHighCount;
+  const entregadoresViewHref = buildInformacoesBagHref({
+    busca: rawSearch,
+    situacao: operationalFilter,
+    status_bag: selectedBagStatus,
+    hotzone: selectedHotZone,
+    turno: selectedTurno,
+    ordenacao: rankingOrder,
+    data_inicio: selectedDashboardStart,
+    data_fim: selectedDashboardEnd,
+  });
+  const performanceViewHref = buildInformacoesBagHref({
+    busca: rawSearch,
+    situacao: operationalFilter,
+    status_bag: selectedBagStatus,
+    hotzone: selectedHotZone,
+    turno: selectedTurno,
+    ordenacao: rankingOrder,
+    data_inicio: selectedDashboardStart,
+    data_fim: selectedDashboardEnd,
+    painel: "performance",
+  });
 
   return !foundationReadyWithCouriers ? (
     <section className="panel">
@@ -1953,6 +2232,7 @@ async function EntregadoresContent({
               <input type="hidden" name="turno" value={selectedTurno} />
               <input type="hidden" name="situacao" value={operationalFilter} />
               <input type="hidden" name="ordenacao" value={rankingOrder} />
+              {showPerformanceView ? <input type="hidden" name="painel" value="performance" /> : null}
               <input
                 type="date"
                 name="data_inicio"
@@ -2088,6 +2368,142 @@ async function EntregadoresContent({
           </article>
         ))}
       </section>
+
+      {showPerformanceView ? (
+        <section className="panel" id="painel-performance">
+          <div className="panel-header">
+            <div>
+              <h2>Tela de Performance</h2>
+              <p>
+                {selectedDashboardStart && selectedDashboardEnd
+                  ? `Leitura derivada das regras de alerta entre ${formatDateLabel(selectedDashboardStart)} e ${formatDateLabel(selectedDashboardEnd)}.`
+                  : "Leitura derivada das regras de alerta com base nas metricas do banco."}
+              </p>
+            </div>
+            <Link href={entregadoresViewHref} className="secondary-button link-button">
+              Voltar aos entregadores
+            </Link>
+          </div>
+
+          <div className="notification-summary-grid">
+            {[
+              {
+                label: "Casos no periodo",
+                value: recentNotifications.length,
+                toneClass: "comparison-fill-neutral",
+              },
+              {
+                label: "Criticos",
+                value: notificationCriticalCount,
+                toneClass: "comparison-fill-danger",
+              },
+              {
+                label: "AR zerado",
+                value: notificationArZeroCount,
+                toneClass: "comparison-fill-warning",
+              },
+              {
+                label: "CAA alto",
+                value: notificationCaaHighCount,
+                toneClass: "comparison-fill-info",
+              },
+            ].map((item) => (
+              <article key={item.label} className="notification-summary-card">
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+                <div className="comparison-track">
+                  <div
+                    className={item.toneClass}
+                    style={{
+                      width: `${recentNotifications.length > 0 ? Math.max((item.value / recentNotifications.length) * 100, 8) : 0}%`,
+                    }}
+                  />
+                </div>
+              </article>
+            ))}
+          </div>
+
+          {recentNotifications.length === 0 ? (
+            <article className="platform-note">
+              <strong>Sem alerta recente nesse periodo</strong>
+              <p>O banco nao trouxe nenhum caso que bata as regras de AR, TSH, CAA ou overtime no intervalo filtrado.</p>
+            </article>
+          ) : (
+            <div className="notification-feed">
+              {recentNotifications.map((notification) => (
+                <article key={notification.id} className="notification-card">
+                  <div className="notification-card-top">
+                    <div>
+                      <div className="user-card-meta">
+                        <strong>{notification.courierName}</strong>
+                        <span
+                          className={
+                            PERFORMANCE_NOTIFICATION_SEVERITY_CLASS_NAMES[notification.severity]
+                          }
+                        >
+                          {PERFORMANCE_NOTIFICATION_SEVERITY_LABELS[notification.severity]}
+                        </span>
+                        <span className="status-chip">
+                          {bagStatusLabels[notification.bagStatus] || notification.bagStatus}
+                        </span>
+                      </div>
+                      <p>
+                        {formatDateLabel(notification.date)}
+                        {notification.hotZone ? ` · ${notification.hotZone}` : ""}
+                        {notification.turno ? ` · ${BAG_SHIFT_LABELS[notification.turno]}` : ""}
+                        {notification.phoneNumber ? ` · ${notification.phoneNumber}` : ""}
+                      </p>
+                    </div>
+                    <div className="notification-meta-stack">
+                      <span>Operador: {notification.operatorName}</span>
+                      <span>Pedidos: {notification.totalOrders}</span>
+                    </div>
+                  </div>
+
+                  <div className="notification-reasons">
+                    {notification.reasons.map((reason) => (
+                      <span key={`${notification.id}-${reason.key}`} className="notification-reason-chip">
+                        {reason.label}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="notification-metrics">
+                    <span>
+                      <strong>TSH</strong>
+                      <span>{formatMetricLabel(notification.avgTsh)}</span>
+                    </span>
+                    <span>
+                      <strong>AR</strong>
+                      <span>{formatMetricLabel(notification.avgAr)}</span>
+                    </span>
+                    <span>
+                      <strong>CAA</strong>
+                      <span>{formatMetricLabel(notification.avgCaa, { reverse: true })}</span>
+                    </span>
+                    <span>
+                      <strong>Overtime</strong>
+                      <span>{formatMetricLabel(notification.avgOvertime, { reverse: true })}</span>
+                    </span>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      ) : (
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <h2>Performance dos entregadores</h2>
+              <p>Abra essa visao so quando quiser conferir as regras de alerta e o calculo operacional.</p>
+            </div>
+            <Link href={performanceViewHref} className="secondary-button link-button">
+              Verificar Performance
+            </Link>
+          </div>
+        </section>
+      )}
 
       {citiesResult.data.length === 0 ? (
         <section className="panel">
