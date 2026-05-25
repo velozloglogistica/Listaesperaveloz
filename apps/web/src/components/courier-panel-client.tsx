@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import { updateBagCourierStatus } from "@/app/bag-actions";
 import {
@@ -91,6 +92,8 @@ type PanelFilters = {
   turno: BagShift | "";
   operationalFilter: OperationalFilter;
   rankingOrder: RankingOrder;
+  dataInicio: string;
+  dataFim: string;
 };
 
 type CourierPanelClientProps = {
@@ -104,6 +107,10 @@ type CourierPanelClientProps = {
   initialTurno: BagShift | "";
   initialOperationalFilter: OperationalFilter;
   initialRankingOrder: RankingOrder;
+  initialDataInicio: string;
+  initialDataFim: string;
+  defaultDataInicio: string;
+  defaultDataFim: string;
   createEnabled: boolean;
 };
 
@@ -411,18 +418,16 @@ function sortCouriers(couriers: FilteredCourierView[], order: RankingOrder) {
   });
 }
 
-function updatePanelQuery(filters: {
+function buildPanelUrl(filters: {
   busca: string;
   status_bag: string;
   hotzone: string;
   turno: string;
   situacao: string;
   ordenacao: string;
+  data_inicio: string;
+  data_fim: string;
 }) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
   const url = new URL(window.location.href);
   const setParam = (key: string, value: string) => {
     if (value) {
@@ -438,7 +443,26 @@ function updatePanelQuery(filters: {
   setParam("turno", filters.turno);
   setParam("situacao", filters.situacao === "todos" ? "" : filters.situacao);
   setParam("ordenacao", filters.ordenacao === "melhor_pior" ? "" : filters.ordenacao);
-  window.history.replaceState({}, "", url.toString());
+  setParam("data_inicio", filters.data_inicio);
+  setParam("data_fim", filters.data_fim);
+  return url.toString();
+}
+
+function updatePanelQuery(filters: {
+  busca: string;
+  status_bag: string;
+  hotzone: string;
+  turno: string;
+  situacao: string;
+  ordenacao: string;
+  data_inicio: string;
+  data_fim: string;
+}) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.history.replaceState({}, "", buildPanelUrl(filters));
 }
 
 export function CourierPanelClient({
@@ -452,8 +476,13 @@ export function CourierPanelClient({
   initialTurno,
   initialOperationalFilter,
   initialRankingOrder,
+  initialDataInicio,
+  initialDataFim,
+  defaultDataInicio,
+  defaultDataFim,
   createEnabled,
 }: CourierPanelClientProps) {
+  const router = useRouter();
   const initialFilters = useMemo<PanelFilters>(
     () => ({
       search: initialSearch,
@@ -462,9 +491,13 @@ export function CourierPanelClient({
       turno: initialTurno,
       operationalFilter: initialOperationalFilter,
       rankingOrder: initialRankingOrder,
+      dataInicio: initialDataInicio,
+      dataFim: initialDataFim,
     }),
     [
       initialBagStatus,
+      initialDataFim,
+      initialDataInicio,
       initialHotZone,
       initialOperationalFilter,
       initialRankingOrder,
@@ -480,14 +513,22 @@ export function CourierPanelClient({
       turno: "",
       operationalFilter: "todos",
       rankingOrder: "melhor_pior",
+      dataInicio: defaultDataInicio,
+      dataFim: defaultDataFim,
     }),
-    [],
+    [defaultDataFim, defaultDataInicio],
   );
 
   const [draftFilters, setDraftFilters] = useState<PanelFilters>(initialFilters);
   const [appliedFilters, setAppliedFilters] = useState<PanelFilters>(initialFilters);
   const [visibleCount, setVisibleCount] = useState(COURIERS_PAGE_SIZE);
   const [isApplyingFilters, setIsApplyingFilters] = useState(false);
+
+  useEffect(() => {
+    setDraftFilters(initialFilters);
+    setAppliedFilters(initialFilters);
+    setVisibleCount(COURIERS_PAGE_SIZE);
+  }, [initialFilters]);
 
   const searchTerm = useMemo(
     () => normalizeSearchValue(appliedFilters.search),
@@ -500,7 +541,9 @@ export function CourierPanelClient({
     draftFilters.hotZone !== appliedFilters.hotZone ||
     draftFilters.turno !== appliedFilters.turno ||
     draftFilters.operationalFilter !== appliedFilters.operationalFilter ||
-    draftFilters.rankingOrder !== appliedFilters.rankingOrder;
+    draftFilters.rankingOrder !== appliedFilters.rankingOrder ||
+    draftFilters.dataInicio !== appliedFilters.dataInicio ||
+    draftFilters.dataFim !== appliedFilters.dataFim;
 
   const filteredCouriers = useMemo(() => {
     const filtered = couriers.flatMap<FilteredCourierView>((courier) => {
@@ -546,6 +589,9 @@ export function CourierPanelClient({
           : "",
         appliedFilters.hotZone ? `Hot Zone: ${appliedFilters.hotZone}` : "",
         appliedFilters.turno ? `Turno: ${BAG_SHIFT_LABELS[appliedFilters.turno]}` : "",
+        appliedFilters.dataInicio && appliedFilters.dataFim
+          ? `Periodo: ${formatDateLabel(appliedFilters.dataInicio)} ate ${formatDateLabel(appliedFilters.dataFim)}`
+          : "",
       ]
         .filter(Boolean)
         .join(" · ");
@@ -558,6 +604,26 @@ export function CourierPanelClient({
     setIsApplyingFilters(true);
 
     window.setTimeout(() => {
+      const periodChanged =
+        draftFilters.dataInicio !== appliedFilters.dataInicio ||
+        draftFilters.dataFim !== appliedFilters.dataFim;
+
+      const nextUrl = buildPanelUrl({
+        busca: draftFilters.search,
+        status_bag: draftFilters.bagStatus,
+        hotzone: draftFilters.hotZone,
+        turno: draftFilters.turno,
+        situacao: draftFilters.operationalFilter,
+        ordenacao: draftFilters.rankingOrder,
+        data_inicio: draftFilters.dataInicio,
+        data_fim: draftFilters.dataFim,
+      });
+
+      if (periodChanged) {
+        router.replace(nextUrl, { scroll: false });
+        return;
+      }
+
       setAppliedFilters(draftFilters);
       setVisibleCount(COURIERS_PAGE_SIZE);
       updatePanelQuery({
@@ -567,6 +633,8 @@ export function CourierPanelClient({
         turno: draftFilters.turno,
         situacao: draftFilters.operationalFilter,
         ordenacao: draftFilters.rankingOrder,
+        data_inicio: draftFilters.dataInicio,
+        data_fim: draftFilters.dataFim,
       });
       setIsApplyingFilters(false);
     }, 120);
@@ -576,6 +644,26 @@ export function CourierPanelClient({
     setIsApplyingFilters(true);
 
     window.setTimeout(() => {
+      const periodChanged =
+        appliedFilters.dataInicio !== defaultFilters.dataInicio ||
+        appliedFilters.dataFim !== defaultFilters.dataFim;
+
+      const nextUrl = buildPanelUrl({
+        busca: "",
+        status_bag: "",
+        hotzone: "",
+        turno: "",
+        situacao: "todos",
+        ordenacao: "melhor_pior",
+        data_inicio: defaultFilters.dataInicio,
+        data_fim: defaultFilters.dataFim,
+      });
+
+      if (periodChanged) {
+        router.replace(nextUrl, { scroll: false });
+        return;
+      }
+
       setDraftFilters(defaultFilters);
       setAppliedFilters(defaultFilters);
       setVisibleCount(COURIERS_PAGE_SIZE);
@@ -586,6 +674,8 @@ export function CourierPanelClient({
         turno: "",
         situacao: "todos",
         ordenacao: "melhor_pior",
+        data_inicio: defaultFilters.dataInicio,
+        data_fim: defaultFilters.dataFim,
       });
       setIsApplyingFilters(false);
     }, 120);
@@ -705,6 +795,32 @@ export function CourierPanelClient({
             </select>
           </div>
           <div className="courier-toolbar-row courier-toolbar-row-tertiary">
+            <input
+              type="date"
+              name="data_inicio"
+              value={draftFilters.dataInicio}
+              onChange={(event) =>
+                setDraftFilters((currentValue) => ({
+                  ...currentValue,
+                  dataInicio: event.target.value,
+                }))
+              }
+              className="text-input courier-filter-control"
+            />
+            <input
+              type="date"
+              name="data_fim"
+              value={draftFilters.dataFim}
+              onChange={(event) =>
+                setDraftFilters((currentValue) => ({
+                  ...currentValue,
+                  dataFim: event.target.value,
+                }))
+              }
+              className="text-input courier-filter-control"
+            />
+          </div>
+          <div className="courier-toolbar-row courier-toolbar-row-tertiary">
             <select
               name="ordenacao"
               value={draftFilters.rankingOrder}
@@ -731,7 +847,9 @@ export function CourierPanelClient({
               draftFilters.operationalFilter !== "todos" ||
               draftFilters.hotZone ||
               draftFilters.turno ||
-              draftFilters.rankingOrder !== "melhor_pior" ? (
+              draftFilters.rankingOrder !== "melhor_pior" ||
+              draftFilters.dataInicio !== defaultFilters.dataInicio ||
+              draftFilters.dataFim !== defaultFilters.dataFim ? (
                 <button type="button" className="secondary-button courier-reset-button" onClick={resetFilters}>
                   {isApplyingFilters ? "Limpando..." : "Limpar filtros"}
                 </button>
