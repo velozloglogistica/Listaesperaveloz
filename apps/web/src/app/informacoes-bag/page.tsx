@@ -163,7 +163,6 @@ type RankingOrder = "melhor_pior" | "pior_melhor" | "mais_recente" | "mais_parad
 type BagCourierInsightView = BagCourierView & {
   performance: CourierPerformanceSummary;
   listPerformance: CourierPerformanceSummary;
-  dashboardPerformance: CourierPerformanceSummary;
   contextPerformances: CourierContextPerformanceView[];
 };
 
@@ -1603,6 +1602,11 @@ async function buildEntregadoresAnalytics(
   const shiftPerformanceActivityIndex = buildPerformanceIndex(shiftPerformanceActivityRows);
   const recentDailyPerformanceIndex = buildPerformanceIndex(recentDailyPerformanceRows);
   const recentShiftPerformanceIndex = buildPerformanceIndex(recentShiftPerformanceRows);
+  let dashboardCouriersRunningInRange = 0;
+  let dashboardGoodCandidates = 0;
+  let dashboardAttentionCount = 0;
+  const dashboardRangeStart = selectedDashboardStart || null;
+  const dashboardRangeEnd = selectedDashboardEnd || null;
   const couriersWithInsights = couriersResult.data.map((courier) => {
     const matchedDailyActivityRows = getMatchedPerformanceRows(
       courier,
@@ -1656,41 +1660,34 @@ async function buildEntregadoresAnalytics(
       latestPerformanceDate,
     );
     const listPerformance = performance;
-    const dashboardDailyActivityRowsForCourier = filterRowsByDateRange(
-      matchedDailyActivityRows,
-      selectedDashboardStart || null,
-      selectedDashboardEnd || null,
-    );
-    const dashboardShiftActivityRowsForCourier = filterRowsByDateRange(
-      matchedShiftActivityRows,
-      selectedDashboardStart || null,
-      selectedDashboardEnd || null,
-    );
-    const dashboardDailyMetricRows = filterRowsByDateRange(
-      matchedDailyRows,
-      selectedDashboardStart || null,
-      selectedDashboardEnd || null,
-    );
-    const dashboardShiftMetricRows = filterRowsByDateRange(
-      matchedShiftRows,
-      selectedDashboardStart || null,
-      selectedDashboardEnd || null,
-    );
-    const dashboardPerformance = buildCourierPerformanceSummary(
-      [
-        ...dashboardDailyActivityRowsForCourier,
-        ...dashboardShiftActivityRowsForCourier.map((row) => ({ data: row.data })),
-      ],
-      dashboardDailyMetricRows,
-      dashboardShiftMetricRows,
-      selectedDashboardEnd || latestPerformanceDate,
-    );
+    const hasDashboardActivity =
+      matchedDailyActivityRows.some(
+        (row) =>
+          (!dashboardRangeStart || row.data >= dashboardRangeStart) &&
+          (!dashboardRangeEnd || row.data <= dashboardRangeEnd),
+      ) ||
+      matchedShiftActivityRows.some(
+        (row) =>
+          (!dashboardRangeStart || row.data >= dashboardRangeStart) &&
+          (!dashboardRangeEnd || row.data <= dashboardRangeEnd),
+      );
+
+    if (hasDashboardActivity) {
+      dashboardCouriersRunningInRange += 1;
+    }
+
+    if (listPerformance.tier === "bom") {
+      dashboardGoodCandidates += 1;
+    }
+
+    if (listPerformance.tier === "atencao" || listPerformance.tier === "parado") {
+      dashboardAttentionCount += 1;
+    }
 
     return {
       ...courier,
       performance,
       listPerformance,
-      dashboardPerformance,
       contextPerformances,
     };
   });
@@ -1701,18 +1698,10 @@ async function buildEntregadoresAnalytics(
     couriersWithInsights,
     couriersRunningOnLatestDate: getDistinctPerformanceCourierCount(performanceRowsOnLatestDate),
     couriersRunningLast15Days: getDistinctPerformanceCourierCount(performanceRowsLast15Days),
-    dashboardCouriersRunningInRange: couriersWithInsights.filter(
-      (item) => item.dashboardPerformance.hasPerformanceHistory,
-    ).length,
-    dashboardCouriersInactiveInRange: couriersWithInsights.filter(
-      (item) => !item.dashboardPerformance.hasPerformanceHistory,
-    ).length,
-    dashboardGoodCandidates: couriersWithInsights.filter(
-      (item) => item.dashboardPerformance.tier === "bom",
-    ).length,
-    dashboardAttentionCount: couriersWithInsights.filter(
-      (item) => item.dashboardPerformance.tier === "atencao" || item.dashboardPerformance.tier === "parado",
-    ).length,
+    dashboardCouriersRunningInRange,
+    dashboardCouriersInactiveInRange: couriersResult.data.length - dashboardCouriersRunningInRange,
+    dashboardGoodCandidates,
+    dashboardAttentionCount,
     activityTrend: buildDistinctCourierTrend(
       dashboardTrendDates,
       dashboardDailyActivityRows,
