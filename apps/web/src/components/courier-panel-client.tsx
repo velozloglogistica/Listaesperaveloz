@@ -707,96 +707,114 @@ export function CourierPanelClient({
         </div>
         <div className="courier-toolbar courier-toolbar-stack">
           <div className="courier-toolbar-row courier-toolbar-row-primary">
-            <input
-              type="search"
-              name="busca"
-              value={draftFilters.search}
-              onChange={(event) =>
-                setDraftFilters((currentValue) => ({
-                  ...currentValue,
-                  search: event.target.value,
-                }))
-              }
-              className="text-input courier-search-input courier-filter-control"
-              placeholder="Pesquisar por nome, ID, telefone, CPF, status, Hot Zone ou operador"
-            />
-            <select
-              name="status_bag"
-              value={draftFilters.bagStatus}
-              onChange={(event) =>
-                setDraftFilters((currentValue) => ({
-                  ...currentValue,
-                  bagStatus: event.target.value,
-                }))
-              }
-              className="select-input courier-filter-select courier-filter-control"
-            >
-              <option value="">Todos os status BAG</option>
-              {bagStatuses.map((status) => (
-                <option key={status.id} value={status.slug}>
-                  {status.label}
-                </option>
-              ))}
-            </select>
+            <label className="courier-filter-field courier-filter-field-search">
+              <span className="courier-filter-field-label">Busca</span>
+              <input
+                type="search"
+                name="busca"
+                value={draftFilters.search}
+                onChange={(event) =>
+                  setDraftFilters((currentValue) => ({
+                    ...currentValue,
+                    search: event.target.value,
+                  }))
+                }
+                className="text-input courier-search-input courier-filter-control"
+                placeholder="Pesquisar por nome, ID, telefone, CPF, status, Hot Zone ou operador"
+              />
+            </label>
+            <label className="courier-filter-field">
+              <span className="courier-filter-field-label">Status BAG</span>
+              <select
+                name="status_bag"
+                value={draftFilters.bagStatus}
+                onChange={(event) =>
+                  setDraftFilters((currentValue) => ({
+                    ...currentValue,
+                    bagStatus: event.target.value,
+                  }))
+                }
+                className="select-input courier-filter-select courier-filter-control"
+              >
+                <option value="">Todos os status BAG</option>
+                {bagStatuses.map((status) => (
+                  <option key={status.id} value={status.slug}>
+                    {status.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
           <div className="courier-toolbar-row courier-toolbar-row-secondary">
-            <select
-              name="hotzone"
-              value={draftFilters.hotZone}
-              onChange={(event) =>
-                setDraftFilters((currentValue) => ({
-                  ...currentValue,
-                  hotZone: event.target.value,
-                }))
-              }
-              className="select-input courier-filter-select courier-filter-control"
-            >
-              <option value="">Todas as Hot Zones</option>
-              {availableHotZones.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-            <select
-              name="turno"
-              value={draftFilters.turno}
-              onChange={(event) =>
-                setDraftFilters((currentValue) => ({
-                  ...currentValue,
-                  turno: event.target.value as BagShift | "",
-                }))
-              }
-              className="select-input courier-filter-select courier-filter-control"
-            >
-              <option value="">Todos os turnos</option>
-              {(Object.keys(BAG_SHIFT_LABELS) as BagShift[]).map((shift) => (
-                <option key={shift} value={shift}>
-                  {BAG_SHIFT_LABELS[shift]}
-                </option>
-              ))}
-            </select>
-            <select
-              name="situacao"
-              value={draftFilters.operationalFilter}
-              onChange={(event) =>
-                setDraftFilters((currentValue) => ({
-                  ...currentValue,
-                  operationalFilter: event.target.value as OperationalFilter,
-                }))
-              }
-              className="select-input courier-filter-select courier-filter-control"
-            >
-              {(Object.keys(OPERATIONAL_FILTER_LABELS) as OperationalFilter[]).map((filterKey) => (
-                <option key={filterKey} value={filterKey}>
-                  {OPERATIONAL_FILTER_LABELS[filterKey]}
-                </option>
-              ))}
-            </select>
+            <label className="courier-filter-field">
+              <span className="courier-filter-field-label">Hot Zone</span>
+              <select
+                name="hotzone"
+                value={draftFilters.hotZone}
+                onChange={(event) =>
+                  setDraftFilters((currentValue) => ({
+                    ...currentValue,
+                    hotZone: event.target.value,
+                  }))
+                }
+                className="select-input courier-filter-select courier-filter-control"
+              >
+                <option value="">Todas as Hot Zones</option>
+                {availableHotZones.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="courier-filter-field">
+              <span className="courier-filter-field-label">Turno</span>
+              <select
+                name="turno"
+                value={draftFilters.turno}
+                onChange={(event) =>
+                  setDraftFilters((currentValue) => ({
+                    ...currentValue,
+                    turno: event.target.value as BagShift | "",
+                  }))
+                }
+                className="select-input courier-filter-select courier-filter-control"
+              >
+                <option value="">Todos os turnos</option>
+                {(Object.keys(BAG_SHIFT_LABELS) as BagShift[]).map((shift) => (
+                  <option key={shift} value={shift}>
+                    {BAG_SHIFT_LABELS[shift]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="courier-filter-field">
+              <span className="courier-filter-field-label">Situacao</span>
+              <select
+                name="situacao"
+                value={draftFilters.operationalFilter}
+                onChange={(event) =>
+                  setDraftFilters((currentValue) => ({
+                    ...currentValue,
+                    operationalFilter: event.target.value as OperationalFilter,
+                  }))
+                }
+                className="select-input courier-filter-select courier-filter-control"
+              >
+                {(Object.keys(OPERATIONAL_FILTER_LABELS) as OperationalFilter[]).map((filterKey) => (
+                  <option key={filterKey} value={filterKey}>
+                    {OPERATIONAL_FILTER_LABELS[filterKey]}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
           <div className="courier-toolbar-row courier-toolbar-row-tertiary">
             <div className="courier-period-group">
-              <span className="courier-period-label">Periodo</span>
+              <div className="courier-period-header">
+                <span className="courier-period-label">Periodo</span>
+                <small>Escolha apenas quando quiser ver historico fora do mes atual.</small>
+              </div>
               <div className="courier-period-inputs">
                 <label className="courier-period-field">
                   <span>De</span>
@@ -830,23 +848,26 @@ export function CourierPanelClient({
                 </label>
               </div>
             </div>
-            <select
-              name="ordenacao"
-              value={draftFilters.rankingOrder}
-              onChange={(event) =>
-                setDraftFilters((currentValue) => ({
-                  ...currentValue,
-                  rankingOrder: event.target.value as RankingOrder,
-                }))
-              }
-              className="select-input courier-filter-select courier-filter-control"
-            >
-              {(Object.keys(RANKING_ORDER_LABELS) as RankingOrder[]).map((orderKey) => (
-                <option key={orderKey} value={orderKey}>
-                  {RANKING_ORDER_LABELS[orderKey]}
-                </option>
-              ))}
-            </select>
+            <label className="courier-filter-field courier-filter-field-compact">
+              <span className="courier-filter-field-label">Ordenacao</span>
+              <select
+                name="ordenacao"
+                value={draftFilters.rankingOrder}
+                onChange={(event) =>
+                  setDraftFilters((currentValue) => ({
+                    ...currentValue,
+                    rankingOrder: event.target.value as RankingOrder,
+                  }))
+                }
+                className="select-input courier-filter-select courier-filter-control"
+              >
+                {(Object.keys(RANKING_ORDER_LABELS) as RankingOrder[]).map((orderKey) => (
+                  <option key={orderKey} value={orderKey}>
+                    {RANKING_ORDER_LABELS[orderKey]}
+                  </option>
+                ))}
+              </select>
+            </label>
             <div className="courier-toolbar-actions">
               <button type="button" className="primary-button" onClick={applyFilters}>
                 {isApplyingFilters ? "Carregando..." : "Filtrar"}
