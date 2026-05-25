@@ -505,13 +505,13 @@ select {
 
 .courier-toolbar-stack {
   display: grid;
-  gap: 12px;
+  gap: 14px;
 }
 
 .courier-toolbar-row {
   display: grid;
   gap: 12px;
-  align-items: end;
+  align-items: start;
 }
 
 .courier-toolbar-row-primary {
@@ -523,7 +523,7 @@ select {
 }
 
 .courier-toolbar-row-tertiary {
-  grid-template-columns: minmax(360px, 1.3fr) minmax(220px, 280px) auto;
+  grid-template-columns: minmax(420px, 1.5fr) minmax(220px, 260px) auto;
 }
 
 .courier-search-input {
@@ -553,13 +553,30 @@ select {
 }
 
 .courier-filter-copy strong {
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .courier-filter-copy p {
   margin: 0;
   color: var(--muted);
   line-height: 1.5;
+}
+
+.courier-filter-field {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.courier-filter-field-compact {
+  max-width: 260px;
+}
+
+.courier-filter-field-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .courier-filter-control {
@@ -576,23 +593,38 @@ select {
 .courier-toolbar-actions {
   display: flex;
   gap: 10px;
-  align-items: center;
+  align-items: flex-end;
   justify-content: flex-end;
   flex-wrap: wrap;
 }
 
 .courier-toolbar-row-tertiary .courier-toolbar-actions {
   min-height: 100%;
+  padding-bottom: 1px;
 }
 
 .courier-period-group {
   display: grid;
   gap: 10px;
-  padding: 12px 14px;
+  min-width: 0;
+  padding: 12px 14px 14px;
   border: 1px solid #b9d9d5;
   border-radius: 16px;
   background: linear-gradient(180deg, #ffffff 0%, #eef7f6 100%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.courier-period-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.courier-period-header small {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .courier-period-label {
@@ -1778,6 +1810,11 @@ select:disabled {
     justify-content: flex-start;
   }
 
+  .courier-filter-field-compact {
+    max-width: none;
+  }
+
+
   .entregadores-loading-notes,
   .entregadores-loading-chart-grid,
   .entregadores-loading-stats {
@@ -1881,6 +1918,11 @@ select:disabled {
 
   .courier-period-inputs {
     grid-template-columns: 1fr;
+  }
+
+  .courier-period-header {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .entregadores-loading-notes,
