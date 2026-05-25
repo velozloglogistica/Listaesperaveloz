@@ -212,7 +212,6 @@ const RANKING_ORDER_LABELS: Record<RankingOrder, string> = {
 
 const SUPABASE_PAGE_SIZE = 1000;
 const BAG_INFO_CACHE_SECONDS = 60;
-const COURIER_ACTIVITY_LOOKBACK_DAYS = 120;
 
 function getBagInfoCacheTag(tenantId: string) {
   return `bag-info:${tenantId}`;
@@ -707,6 +706,12 @@ function formatDateLabel(value: string | null) {
 function subtractDaysFromIsoDate(value: string, days: number) {
   const date = new Date(`${value}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() - days);
+  return date.toISOString().slice(0, 10);
+}
+
+function getStartOfMonthIsoDate(value: string) {
+  const date = new Date(`${value}T00:00:00Z`);
+  date.setUTCDate(1);
   return date.toISOString().slice(0, 10);
 }
 
@@ -1530,18 +1535,10 @@ async function buildEntregadoresAnalytics(
   }
 
   const last15Start = latestPerformanceDate ? subtractDaysFromIsoDate(latestPerformanceDate, 14) : null;
-  const activityWindowStart = pickEarliestDate([
-    selectedDashboardStart,
-    latestPerformanceDate
-      ? subtractDaysFromIsoDate(latestPerformanceDate, COURIER_ACTIVITY_LOOKBACK_DAYS - 1)
-      : null,
-  ]);
-  const activityWindowEnd = pickLatestDate([selectedDashboardEnd, latestPerformanceDate]);
-  const recentPerformanceStart = pickEarliestDate([
-    selectedDashboardStart,
-    latestPerformanceDate ? subtractDaysFromIsoDate(latestPerformanceDate, 29) : null,
-  ]);
-  const recentPerformanceEnd = pickLatestDate([selectedDashboardEnd, latestPerformanceDate]);
+  const activityWindowStart = selectedDashboardStart || null;
+  const activityWindowEnd = selectedDashboardEnd || null;
+  const recentPerformanceStart = selectedDashboardStart || null;
+  const recentPerformanceEnd = selectedDashboardEnd || null;
   const [
     dailyPerformanceActivityRows,
     shiftPerformanceActivityRows,
@@ -1876,7 +1873,7 @@ async function EntregadoresContent({
   )
     ? (rawRankingOrder as RankingOrder)
     : "melhor_pior";
-  const defaultDashboardStart = latestPerformanceDate ? subtractDaysFromIsoDate(latestPerformanceDate, 13) : "";
+  const defaultDashboardStart = latestPerformanceDate ? getStartOfMonthIsoDate(latestPerformanceDate) : "";
   const defaultDashboardEnd = latestPerformanceDate || "";
   const selectedDashboardStart =
     rawDataInicio && (!defaultDashboardEnd || rawDataInicio <= defaultDashboardEnd)
