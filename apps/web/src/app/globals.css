@@ -523,7 +523,7 @@ select {
 }
 
 .courier-toolbar-row-tertiary {
-  grid-template-columns: minmax(220px, 280px) auto;
+  grid-template-columns: minmax(360px, 1.3fr) minmax(220px, 280px) auto;
 }
 
 .courier-search-input {
@@ -583,6 +583,52 @@ select {
 
 .courier-toolbar-row-tertiary .courier-toolbar-actions {
   min-height: 100%;
+}
+
+.courier-period-group {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid #b9d9d5;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #eef7f6 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.courier-period-label {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.1);
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.courier-period-inputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.courier-period-field {
+  display: grid;
+  gap: 6px;
+}
+
+.courier-period-field span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.courier-period-field .text-input {
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 12px;
 }
 
 .courier-reset-button {
@@ -1724,7 +1770,7 @@ select:disabled {
   }
 
   .courier-toolbar-row-tertiary {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr 1fr;
   }
 
   .courier-toolbar-actions {
@@ -1830,6 +1876,10 @@ select:disabled {
   .courier-toolbar-row-primary,
   .courier-toolbar-row-secondary,
   .courier-toolbar-row-tertiary {
+    grid-template-columns: 1fr;
+  }
+
+  .courier-period-inputs {
     grid-template-columns: 1fr;
   }
 

@@ -795,32 +795,41 @@ export function CourierPanelClient({
             </select>
           </div>
           <div className="courier-toolbar-row courier-toolbar-row-tertiary">
-            <input
-              type="date"
-              name="data_inicio"
-              value={draftFilters.dataInicio}
-              onChange={(event) =>
-                setDraftFilters((currentValue) => ({
-                  ...currentValue,
-                  dataInicio: event.target.value,
-                }))
-              }
-              className="text-input courier-filter-control"
-            />
-            <input
-              type="date"
-              name="data_fim"
-              value={draftFilters.dataFim}
-              onChange={(event) =>
-                setDraftFilters((currentValue) => ({
-                  ...currentValue,
-                  dataFim: event.target.value,
-                }))
-              }
-              className="text-input courier-filter-control"
-            />
-          </div>
-          <div className="courier-toolbar-row courier-toolbar-row-tertiary">
+            <div className="courier-period-group">
+              <span className="courier-period-label">Periodo</span>
+              <div className="courier-period-inputs">
+                <label className="courier-period-field">
+                  <span>De</span>
+                  <input
+                    type="date"
+                    name="data_inicio"
+                    value={draftFilters.dataInicio}
+                    onChange={(event) =>
+                      setDraftFilters((currentValue) => ({
+                        ...currentValue,
+                        dataInicio: event.target.value,
+                      }))
+                    }
+                    className="text-input courier-filter-control"
+                  />
+                </label>
+                <label className="courier-period-field">
+                  <span>Ate</span>
+                  <input
+                    type="date"
+                    name="data_fim"
+                    value={draftFilters.dataFim}
+                    onChange={(event) =>
+                      setDraftFilters((currentValue) => ({
+                        ...currentValue,
+                        dataFim: event.target.value,
+                      }))
+                    }
+                    className="text-input courier-filter-control"
+                  />
+                </label>
+              </div>
+            </div>
             <select
               name="ordenacao"
               value={draftFilters.rankingOrder}
