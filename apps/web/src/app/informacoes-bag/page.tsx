@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { unstable_cache } from "next/cache";
+import { Suspense } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { BagStatusForm } from "@/components/bag-status-form";
@@ -1429,17 +1430,19 @@ function matchesCourierSearch(
   return searchableContent.includes(searchTerm);
 }
 
+type InformacoesBagSearchParams = {
+  busca?: string | string[];
+  situacao?: string | string[];
+  status_bag?: string | string[];
+  hotzone?: string | string[];
+  turno?: string | string[];
+  ordenacao?: string | string[];
+  data_inicio?: string | string[];
+  data_fim?: string | string[];
+};
+
 type InformacoesBagPageProps = {
-  searchParams?: Promise<{
-    busca?: string | string[];
-    situacao?: string | string[];
-    status_bag?: string | string[];
-    hotzone?: string | string[];
-    turno?: string | string[];
-    ordenacao?: string | string[];
-    data_inicio?: string | string[];
-    data_fim?: string | string[];
-  }>;
+  searchParams?: Promise<InformacoesBagSearchParams>;
 };
 
 type EntregadoresAnalyticsPayload = {
@@ -1744,28 +1747,88 @@ async function getCachedEntregadoresAnalytics(
   )();
 }
 
-export default async function InformacoesBagPage({ searchParams }: InformacoesBagPageProps) {
-  const currentUser = await requireAppUser();
+function EntregadoresContentFallback() {
+  return (
+    <>
+      <section className="dashboard-grid">
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <h2>Visao da base</h2>
+              <p>Carregando os indicadores operacionais sem travar a abertura da tela.</p>
+            </div>
+            <span className="loading-chip">Carregando...</span>
+          </div>
+          <div className="comparison-bars">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div key={`loading-row-${index}`} className="comparison-row">
+                <div className="comparison-row-top">
+                  <strong className="loading-block loading-block-text loading-block-text-short" />
+                  <span className="loading-block loading-block-badge" />
+                </div>
+                <div className="comparison-track">
+                  <div className="comparison-fill comparison-fill-neutral" style={{ width: `${28 + index * 12}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <h2>Graficos e tendencia</h2>
+              <p>Os graficos entram assim que a consulta principal terminar.</p>
+            </div>
+          </div>
+          <div className="entregadores-loading-chart loading-block" />
+        </section>
+      </section>
 
-  if (!canAccessModule(currentUser, "bag_info")) {
-    redirect("/?error=sem_permissao_bag");
-  }
+      <section className="panel">
+        <div className="panel-header">
+          <div>
+            <h2>Painel de entregadores</h2>
+            <p>A estrutura ja abriu e a lista esta sendo preenchida.</p>
+          </div>
+        </div>
+        <div className="entregadores-loading-list">
+          {Array.from({ length: 2 }).map((_, index) => (
+            <article key={`courier-stream-${index}`} className="user-card user-card-stack">
+              <div className="entregadores-loading-card-top">
+                <div className="loading-block loading-block-title" />
+                <div className="loading-block loading-block-badge" />
+              </div>
+              <div className="entregadores-loading-lines">
+                <div className="loading-block loading-block-text" />
+                <div className="loading-block loading-block-text loading-block-text-short" />
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+    </>
+  );
+}
 
-  const tenantId = currentUser.current_tenant.id;
+async function EntregadoresContent({
+  tenantId,
+  resolvedSearchParams,
+}: {
+  tenantId: string;
+  resolvedSearchParams: InformacoesBagSearchParams;
+}) {
   const [
     citiesResult,
     regionsResult,
     operators,
     bagStatusesResult,
     latestPerformanceDate,
-    resolvedSearchParams,
   ] = await Promise.all([
     getCachedTenantCities(tenantId),
     getCachedTenantRegions(tenantId),
     getCachedTenantOperators(tenantId),
     getCachedTenantBagStatuses(tenantId),
     getCachedLatestPerformanceDateForTenant(tenantId),
-    searchParams,
   ]);
 
   const foundationReady =
@@ -1850,21 +1913,10 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
   const foundationReadyWithCouriers = foundationReady && analytics.foundationReady;
   const couriersWithInsights = analytics.couriersWithInsights;
   const totalRegisteredCouriers = couriersWithInsights.length;
-  const couriersRunningOnLatestDate = analytics.couriersRunningOnLatestDate;
-  const couriersRunningLast15Days = analytics.couriersRunningLast15Days;
-  const couriersInactiveLast15Days = couriersWithInsights.filter((courier) => !courier.performance.hasRunLast15Days).length;
-  const couriersInactiveLast30Days = couriersWithInsights.filter((courier) => !courier.performance.hasRunLast30Days).length;
-  const couriersNeverRan = couriersWithInsights.filter((courier) => !courier.performance.hasPerformanceHistory).length;
-  const couriersEverRan = couriersWithInsights.filter((courier) => courier.performance.hasPerformanceHistory).length;
-  const goodCandidates = couriersWithInsights.filter((courier) => courier.performance.tier === "bom").length;
-  const couriersNeedingAttention = couriersWithInsights.filter(
-    (courier) => courier.performance.tier === "atencao" || courier.performance.tier === "parado",
-  ).length;
   const highlightedCandidates = sortCouriers(
     couriersWithInsights.filter((courier) => courier.performance.tier === "bom"),
     "melhor_pior",
-  )
-    .slice(0, 3);
+  ).slice(0, 3);
   const dashboardCouriersRunningInRange = analytics.dashboardCouriersRunningInRange;
   const dashboardCouriersInactiveInRange = analytics.dashboardCouriersInactiveInRange;
   const dashboardGoodCandidates = analytics.dashboardGoodCandidates;
@@ -1883,6 +1935,261 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
   const caaTrend = analytics.caaTrend;
   const overtimeTrend = analytics.overtimeTrend;
 
+  return !foundationReadyWithCouriers ? (
+    <section className="panel">
+      <div className="panel-header">
+        <div>
+          <h2>Ativar modulo BAG</h2>
+          <p>
+            Rode a migration `supabase/add_bag_information_module.sql` para liberar cidades,
+            regioes e cadastro de entregadores BAG.
+          </p>
+        </div>
+      </div>
+    </section>
+  ) : (
+    <>
+      <section className="dashboard-grid">
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <h2>Visao da base</h2>
+              <p>
+                {selectedDashboardStart && selectedDashboardEnd
+                  ? `Leitura do periodo entre ${formatDateLabel(selectedDashboardStart)} e ${formatDateLabel(selectedDashboardEnd)}.`
+                  : "Ainda nao existe leitura de performance para comparar a base."}
+              </p>
+            </div>
+            <form action="/informacoes-bag" method="get" className="dashboard-date-toolbar">
+              <input type="hidden" name="busca" value={rawSearch} />
+              <input type="hidden" name="status_bag" value={selectedBagStatus} />
+              <input type="hidden" name="hotzone" value={selectedHotZone} />
+              <input type="hidden" name="turno" value={selectedTurno} />
+              <input type="hidden" name="situacao" value={operationalFilter} />
+              <input type="hidden" name="ordenacao" value={rankingOrder} />
+              <input
+                type="date"
+                name="data_inicio"
+                defaultValue={selectedDashboardStart}
+                className="text-input dashboard-date-input"
+              />
+              <input
+                type="date"
+                name="data_fim"
+                defaultValue={selectedDashboardEnd}
+                className="text-input dashboard-date-input"
+              />
+              <button type="submit" className="secondary-button">
+                Atualizar graficos
+              </button>
+            </form>
+          </div>
+
+          <div className="comparison-bars">
+            {[
+              { label: "Cadastrados", value: totalRegisteredCouriers, tone: "neutral" },
+              { label: "Rodaram no periodo", value: dashboardCouriersRunningInRange, tone: "success" },
+              { label: "Sem rodar no periodo", value: dashboardCouriersInactiveInRange, tone: "warning" },
+              { label: "Bons candidatos", value: dashboardGoodCandidates, tone: "info" },
+              { label: "Pedem atencao", value: dashboardAttentionCount, tone: "danger" },
+            ].map((item) => (
+              <div key={item.label} className="comparison-row">
+                <div className="comparison-row-top">
+                  <strong>{item.label}</strong>
+                  <span>{item.value}</span>
+                </div>
+                <div className="comparison-track">
+                  <div
+                    className={`comparison-fill comparison-fill-${item.tone}`}
+                    style={{
+                      width: `${totalRegisteredCouriers > 0 ? (item.value / totalRegisteredCouriers) * 100 : 0}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="efficiency-grid">
+            <article className="platform-note">
+              <strong>Eficiencia da base</strong>
+              <p>
+                {totalRegisteredCouriers > 0
+                  ? `${Math.round((dashboardCouriersRunningInRange / totalRegisteredCouriers) * 100)}% da base cadastrada rodou no periodo selecionado.`
+                  : "Sem base cadastrada para comparar."}
+              </p>
+            </article>
+            <article className="platform-note">
+              <strong>Quem pode cobrir slot</strong>
+              <p>
+                {highlightedCandidates.length > 0
+                  ? highlightedCandidates
+                      .map((courier) => {
+                        const place = courier.performance.dominantHotZone || "Hot Zone sem padrao";
+                        const shift = courier.performance.dominantShift || "periodo sem padrao";
+                        return `${courier.full_name} (${place} / ${shift})`;
+                      })
+                      .join(" · ")
+                  : "Ainda nao ha candidatos fortes o suficiente para sugerir cobertura automatica."}
+              </p>
+            </article>
+          </div>
+
+          <div className="status-chip-grid">
+            {bagStatusSummary.map((status) => (
+              <span key={status.id} className="status-chip">
+                {status.label}: {status.count}
+              </span>
+            ))}
+          </div>
+        </section>
+
+        <section className="panel">
+          <TrendChartPanel
+            title="Atividade da base"
+            description="Entregadores por dia no periodo selecionado"
+            eyebrow="Entregadores rodando"
+            value={activityTrend.at(-1)?.value || 0}
+            caption={`Pico recente de ${Math.max(...activityTrend.map((point) => point.value), 0)} entregadores no periodo.`}
+            points={activityTrend}
+            toneClass="sparkline-activity"
+            format="integer"
+          />
+        </section>
+      </section>
+
+      <section className="metric-trend-grid">
+        {[
+          {
+            title: "TSH",
+            value: tshTrend.at(-1)?.value || 0,
+            points: tshTrend,
+            subtitle: "Tempo online medio",
+            className: "sparkline-success",
+          },
+          {
+            title: "AR",
+            value: arTrend.at(-1)?.value || 0,
+            points: arTrend,
+            subtitle: "Aceitacao de pedidos",
+            className: "sparkline-info",
+          },
+          {
+            title: "CAA",
+            value: caaTrend.at(-1)?.value || 0,
+            points: caaTrend,
+            subtitle: "Cancelamento, menor melhor",
+            className: "sparkline-warning",
+          },
+          {
+            title: "Overtime",
+            value: overtimeTrend.at(-1)?.value || 0,
+            points: overtimeTrend,
+            subtitle: "Atraso, menor melhor",
+            className: "sparkline-danger",
+          },
+        ].map((metric) => (
+          <article key={metric.title} className="metric-trend-card">
+            <TrendChartPanel
+              eyebrow={metric.title}
+              value={metric.value}
+              subtitle={metric.subtitle}
+              points={metric.points}
+              toneClass={metric.className}
+              format="percent"
+              compact
+            />
+          </article>
+        ))}
+      </section>
+
+      {citiesResult.data.length === 0 ? (
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <h2>Configure o Perfil da empresa</h2>
+              <p>Cadastre a primeira cidade no Perfil da empresa antes de usar o modulo de entregadores.</p>
+            </div>
+            <Link href="/perfil-empresa" className="secondary-button link-button">
+              Abrir Perfil da empresa
+            </Link>
+          </div>
+        </section>
+      ) : null}
+
+      {citiesResult.data.length > 0 && regionsResult.data.length === 0 ? (
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <h2>Cadastre pelo menos uma Hot Zone</h2>
+              <p>O entregador precisa informar qual Hot Zone deseja atuar antes de ser salvo no banco.</p>
+            </div>
+            <Link href="/perfil-empresa" className="secondary-button link-button">
+              Abrir Perfil da empresa
+            </Link>
+          </div>
+        </section>
+      ) : null}
+
+      {bagStatusesResult.data.length === 0 ? (
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <h2>Cadastre pelo menos um status BAG</h2>
+              <p>
+                O entregador precisa receber um status BAG da propria empresa antes de ser salvo
+                no banco.
+              </p>
+            </div>
+            <Link href="/perfil-empresa" className="secondary-button link-button">
+              Abrir Perfil da empresa
+            </Link>
+          </div>
+        </section>
+      ) : null}
+
+      {operators.length === 0 ? (
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <h2>Sem operadores ativos</h2>
+              <p>Ative usuarios da empresa antes de vincular quem fez o cadastro do entregador.</p>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      <CourierPanelClient
+        couriers={couriersWithInsights}
+        bagStatuses={bagStatusesResult.data}
+        bagStatusLabels={bagStatusLabels}
+        availableHotZones={availableHotZones}
+        initialSearch={rawSearch}
+        initialBagStatus={selectedBagStatus}
+        initialHotZone={selectedHotZone}
+        initialTurno={selectedTurno}
+        initialOperationalFilter={operationalFilter}
+        initialRankingOrder={rankingOrder}
+        createEnabled={
+          citiesResult.data.length > 0 &&
+          regionsResult.data.length > 0 &&
+          operators.length > 0 &&
+          bagStatusesResult.data.length > 0
+        }
+      />
+    </>
+  );
+}
+
+export default async function InformacoesBagPage({ searchParams }: InformacoesBagPageProps) {
+  const currentUser = await requireAppUser();
+
+  if (!canAccessModule(currentUser, "bag_info")) {
+    redirect("/?error=sem_permissao_bag");
+  }
+
+  const resolvedSearchParams = (await searchParams) || {};
+
   return (
     <AppShell
       currentPath="/informacoes-bag"
@@ -1890,250 +2197,12 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
       description="Olhe a base inteira, descubra quem esta rodando, quem sumiu da operacao e quem pode cobrir hot zones e periodos com mais seguranca."
       user={currentUser}
     >
-      {!foundationReadyWithCouriers ? (
-        <section className="panel">
-          <div className="panel-header">
-            <div>
-              <h2>Ativar modulo BAG</h2>
-              <p>
-                Rode a migration `supabase/add_bag_information_module.sql` para liberar cidades,
-                regioes e cadastro de entregadores BAG.
-              </p>
-            </div>
-          </div>
-        </section>
-      ) : (
-        <>
-          <section className="dashboard-grid">
-            <section className="panel">
-              <div className="panel-header">
-                <div>
-                  <h2>Visao da base</h2>
-                  <p>
-                    {selectedDashboardStart && selectedDashboardEnd
-                      ? `Leitura do periodo entre ${formatDateLabel(selectedDashboardStart)} e ${formatDateLabel(selectedDashboardEnd)}.`
-                      : "Ainda nao existe leitura de performance para comparar a base."}
-                  </p>
-                </div>
-                <form action="/informacoes-bag" method="get" className="dashboard-date-toolbar">
-                  <input type="hidden" name="busca" value={rawSearch} />
-                  <input type="hidden" name="status_bag" value={selectedBagStatus} />
-                  <input type="hidden" name="hotzone" value={selectedHotZone} />
-                  <input type="hidden" name="turno" value={selectedTurno} />
-                  <input type="hidden" name="situacao" value={operationalFilter} />
-                  <input type="hidden" name="ordenacao" value={rankingOrder} />
-                  <input
-                    type="date"
-                    name="data_inicio"
-                    defaultValue={selectedDashboardStart}
-                    className="text-input dashboard-date-input"
-                  />
-                  <input
-                    type="date"
-                    name="data_fim"
-                    defaultValue={selectedDashboardEnd}
-                    className="text-input dashboard-date-input"
-                  />
-                  <button type="submit" className="secondary-button">
-                    Atualizar graficos
-                  </button>
-                </form>
-              </div>
-
-              <div className="comparison-bars">
-                {[
-                  { label: "Cadastrados", value: totalRegisteredCouriers, tone: "neutral" },
-                  { label: "Rodaram no periodo", value: dashboardCouriersRunningInRange, tone: "success" },
-                  { label: "Sem rodar no periodo", value: dashboardCouriersInactiveInRange, tone: "warning" },
-                  { label: "Bons candidatos", value: dashboardGoodCandidates, tone: "info" },
-                  { label: "Pedem atencao", value: dashboardAttentionCount, tone: "danger" },
-                ].map((item) => (
-                  <div key={item.label} className="comparison-row">
-                    <div className="comparison-row-top">
-                      <strong>{item.label}</strong>
-                      <span>{item.value}</span>
-                    </div>
-                    <div className="comparison-track">
-                      <div
-                        className={`comparison-fill comparison-fill-${item.tone}`}
-                        style={{
-                          width: `${totalRegisteredCouriers > 0 ? (item.value / totalRegisteredCouriers) * 100 : 0}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="efficiency-grid">
-                <article className="platform-note">
-                  <strong>Eficiencia da base</strong>
-                  <p>
-                    {totalRegisteredCouriers > 0
-                      ? `${Math.round((dashboardCouriersRunningInRange / totalRegisteredCouriers) * 100)}% da base cadastrada rodou no periodo selecionado.`
-                      : "Sem base cadastrada para comparar."}
-                  </p>
-                </article>
-                <article className="platform-note">
-                  <strong>Quem pode cobrir slot</strong>
-                  <p>
-                    {highlightedCandidates.length > 0
-                      ? highlightedCandidates
-                          .map((courier) => {
-                            const place = courier.performance.dominantHotZone || "Hot Zone sem padrao";
-                            const shift = courier.performance.dominantShift || "periodo sem padrao";
-                            return `${courier.full_name} (${place} / ${shift})`;
-                          })
-                          .join(" · ")
-                      : "Ainda nao ha candidatos fortes o suficiente para sugerir cobertura automatica."}
-                  </p>
-                </article>
-              </div>
-
-              <div className="status-chip-grid">
-                {bagStatusSummary.map((status) => (
-                  <span key={status.id} className="status-chip">
-                    {status.label}: {status.count}
-                  </span>
-                ))}
-              </div>
-            </section>
-
-            <section className="panel">
-              <TrendChartPanel
-                title="Atividade da base"
-                description="Entregadores por dia no periodo selecionado"
-                eyebrow="Entregadores rodando"
-                value={activityTrend.at(-1)?.value || 0}
-                caption={`Pico recente de ${Math.max(...activityTrend.map((point) => point.value), 0)} entregadores no periodo.`}
-                points={activityTrend}
-                toneClass="sparkline-activity"
-                format="integer"
-              />
-            </section>
-          </section>
-
-          <section className="metric-trend-grid">
-            {[
-              {
-                title: "TSH",
-                value: tshTrend.at(-1)?.value || 0,
-                points: tshTrend,
-                subtitle: "Tempo online medio",
-                className: "sparkline-success",
-              },
-              {
-                title: "AR",
-                value: arTrend.at(-1)?.value || 0,
-                points: arTrend,
-                subtitle: "Aceitacao de pedidos",
-                className: "sparkline-info",
-              },
-              {
-                title: "CAA",
-                value: caaTrend.at(-1)?.value || 0,
-                points: caaTrend,
-                subtitle: "Cancelamento, menor melhor",
-                className: "sparkline-warning",
-              },
-              {
-                title: "Overtime",
-                value: overtimeTrend.at(-1)?.value || 0,
-                points: overtimeTrend,
-                subtitle: "Atraso, menor melhor",
-                className: "sparkline-danger",
-              },
-            ].map((metric) => (
-              <article key={metric.title} className="metric-trend-card">
-                <TrendChartPanel
-                  eyebrow={metric.title}
-                  value={metric.value}
-                  subtitle={metric.subtitle}
-                  points={metric.points}
-                  toneClass={metric.className}
-                  format="percent"
-                  compact
-                />
-              </article>
-            ))}
-          </section>
-
-          {citiesResult.data.length === 0 ? (
-            <section className="panel">
-              <div className="panel-header">
-                <div>
-                  <h2>Configure o Perfil da empresa</h2>
-                  <p>Cadastre a primeira cidade no Perfil da empresa antes de usar o modulo de entregadores.</p>
-                </div>
-                <Link href="/perfil-empresa" className="secondary-button link-button">
-                  Abrir Perfil da empresa
-                </Link>
-              </div>
-            </section>
-          ) : null}
-
-          {citiesResult.data.length > 0 && regionsResult.data.length === 0 ? (
-            <section className="panel">
-              <div className="panel-header">
-                <div>
-                  <h2>Cadastre pelo menos uma Hot Zone</h2>
-                  <p>O entregador precisa informar qual Hot Zone deseja atuar antes de ser salvo no banco.</p>
-                </div>
-                <Link href="/perfil-empresa" className="secondary-button link-button">
-                  Abrir Perfil da empresa
-                </Link>
-              </div>
-            </section>
-          ) : null}
-
-          {bagStatusesResult.data.length === 0 ? (
-            <section className="panel">
-              <div className="panel-header">
-                <div>
-                  <h2>Cadastre pelo menos um status BAG</h2>
-                  <p>
-                    O entregador precisa receber um status BAG da propria empresa antes de ser salvo
-                    no banco.
-                  </p>
-                </div>
-                <Link href="/perfil-empresa" className="secondary-button link-button">
-                  Abrir Perfil da empresa
-                </Link>
-              </div>
-            </section>
-          ) : null}
-
-          {operators.length === 0 ? (
-            <section className="panel">
-              <div className="panel-header">
-                <div>
-                  <h2>Sem operadores ativos</h2>
-                  <p>Ative usuarios da empresa antes de vincular quem fez o cadastro do entregador.</p>
-                </div>
-              </div>
-            </section>
-          ) : null}
-
-          <CourierPanelClient
-            couriers={couriersWithInsights}
-            bagStatuses={bagStatusesResult.data}
-            bagStatusLabels={bagStatusLabels}
-            availableHotZones={availableHotZones}
-            initialSearch={rawSearch}
-            initialBagStatus={selectedBagStatus}
-            initialHotZone={selectedHotZone}
-            initialTurno={selectedTurno}
-            initialOperationalFilter={operationalFilter}
-            initialRankingOrder={rankingOrder}
-            createEnabled={
-              citiesResult.data.length > 0 &&
-              regionsResult.data.length > 0 &&
-              operators.length > 0 &&
-              bagStatusesResult.data.length > 0
-            }
-          />
-        </>
-      )}
+      <Suspense fallback={<EntregadoresContentFallback />}>
+        <EntregadoresContent
+          tenantId={currentUser.current_tenant.id}
+          resolvedSearchParams={resolvedSearchParams}
+        />
+      </Suspense>
     </AppShell>
   );
 }
