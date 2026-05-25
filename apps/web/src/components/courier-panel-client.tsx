@@ -71,7 +71,6 @@ type BagCourierInsightView = {
   regions: string[];
   performance: CourierPerformanceSummary;
   listPerformance: CourierPerformanceSummary;
-  dashboardPerformance: CourierPerformanceSummary;
   contextPerformances: CourierContextPerformanceEntry[];
 };
 
