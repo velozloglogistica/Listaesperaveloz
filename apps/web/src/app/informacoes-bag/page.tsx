@@ -6,6 +6,7 @@ import { Suspense } from "react";
 import { AppShell } from "@/components/app-shell";
 import { BagStatusForm } from "@/components/bag-status-form";
 import { CourierPanelClient } from "@/components/courier-panel-client";
+import { EntregadoresViewToggle } from "@/components/entregadores-view-toggle";
 import { TrendChartPanel } from "@/components/trend-chart-panel";
 import {
   BAG_SHIFT_LABELS,
@@ -1654,29 +1655,6 @@ function getCacheKeyPart(value: string | null | undefined) {
   return normalizeSearchValue(value || "") || "all";
 }
 
-function buildInformacoesBagHref(params: {
-  busca?: string;
-  situacao?: string;
-  status_bag?: string;
-  hotzone?: string;
-  turno?: string;
-  ordenacao?: string;
-  data_inicio?: string;
-  data_fim?: string;
-  painel?: string;
-}) {
-  const searchParams = new URLSearchParams();
-
-  for (const [key, value] of Object.entries(params)) {
-    if (value) {
-      searchParams.set(key, value);
-    }
-  }
-
-  const queryString = searchParams.toString();
-  return queryString ? `/informacoes-bag?${queryString}` : "/informacoes-bag";
-}
-
 async function getLatestPerformanceDateFromTable(table: string, tenantId: string) {
   const { data, error } = await supabaseServer
     .from(table)
@@ -1961,7 +1939,6 @@ async function getCachedEntregadoresAnalytics(
   tenantId: string,
   selectedDashboardStart: string,
   selectedDashboardEnd: string,
-  includePerformanceView: boolean,
 ) {
   return unstable_cache(
     async () =>
@@ -1969,10 +1946,10 @@ async function getCachedEntregadoresAnalytics(
         tenantId,
         selectedDashboardStart,
         selectedDashboardEnd,
-        includePerformanceView,
+        true,
       ),
     [
-      `bag-info-analytics-${tenantId}-${selectedDashboardStart}-${selectedDashboardEnd}-${includePerformanceView ? "performance" : "default"}`,
+      `bag-info-analytics-${tenantId}-${selectedDashboardStart}-${selectedDashboardEnd}-full`,
     ],
     {
       revalidate: BAG_INFO_CACHE_SECONDS,
@@ -2148,7 +2125,6 @@ async function EntregadoresContent({
     tenantId,
     selectedDashboardStart,
     selectedDashboardEnd,
-    showPerformanceView,
   );
   const foundationReadyWithCouriers = foundationReady && analytics.foundationReady;
   const couriersWithInsights = analytics.couriersWithInsights;
@@ -2178,27 +2154,6 @@ async function EntregadoresContent({
   const notificationCriticalCount = analytics.notificationCriticalCount;
   const notificationArZeroCount = analytics.notificationArZeroCount;
   const notificationCaaHighCount = analytics.notificationCaaHighCount;
-  const entregadoresViewHref = buildInformacoesBagHref({
-    busca: rawSearch,
-    situacao: operationalFilter,
-    status_bag: selectedBagStatus,
-    hotzone: selectedHotZone,
-    turno: selectedTurno,
-    ordenacao: rankingOrder,
-    data_inicio: selectedDashboardStart,
-    data_fim: selectedDashboardEnd,
-  });
-  const performanceViewHref = buildInformacoesBagHref({
-    busca: rawSearch,
-    situacao: operationalFilter,
-    status_bag: selectedBagStatus,
-    hotzone: selectedHotZone,
-    turno: selectedTurno,
-    ordenacao: rankingOrder,
-    data_inicio: selectedDashboardStart,
-    data_fim: selectedDashboardEnd,
-    painel: "performance",
-  });
 
   return !foundationReadyWithCouriers ? (
     <section className="panel">
@@ -2232,7 +2187,6 @@ async function EntregadoresContent({
               <input type="hidden" name="turno" value={selectedTurno} />
               <input type="hidden" name="situacao" value={operationalFilter} />
               <input type="hidden" name="ordenacao" value={rankingOrder} />
-              {showPerformanceView ? <input type="hidden" name="painel" value="performance" /> : null}
               <input
                 type="date"
                 name="data_inicio"
@@ -2369,143 +2323,131 @@ async function EntregadoresContent({
         ))}
       </section>
 
-      {showPerformanceView ? (
-        <section className="panel" id="painel-performance">
-          <div className="panel-header">
-            <div>
-              <h2>Tela de Performance</h2>
-              <p>
-                {selectedDashboardStart && selectedDashboardEnd
-                  ? `Leitura derivada das regras de alerta entre ${formatDateLabel(selectedDashboardStart)} e ${formatDateLabel(selectedDashboardEnd)}.`
-                  : "Leitura derivada das regras de alerta com base nas metricas do banco."}
-              </p>
+      <EntregadoresViewToggle
+        initialView={showPerformanceView ? "performance" : "entregadores"}
+        performanceContent={
+          <section className="panel" id="painel-performance">
+            <div className="panel-header">
+              <div>
+                <h2>Tela de Performance</h2>
+                <p>
+                  {selectedDashboardStart && selectedDashboardEnd
+                    ? `Leitura derivada das regras de alerta entre ${formatDateLabel(selectedDashboardStart)} e ${formatDateLabel(selectedDashboardEnd)}.`
+                    : "Leitura derivada das regras de alerta com base nas metricas do banco."}
+                </p>
+              </div>
             </div>
-            <Link href={entregadoresViewHref} className="secondary-button link-button">
-              Voltar aos entregadores
-            </Link>
-          </div>
 
-          <div className="notification-summary-grid">
-            {[
-              {
-                label: "Casos no periodo",
-                value: recentNotifications.length,
-                toneClass: "comparison-fill-neutral",
-              },
-              {
-                label: "Criticos",
-                value: notificationCriticalCount,
-                toneClass: "comparison-fill-danger",
-              },
-              {
-                label: "AR zerado",
-                value: notificationArZeroCount,
-                toneClass: "comparison-fill-warning",
-              },
-              {
-                label: "CAA alto",
-                value: notificationCaaHighCount,
-                toneClass: "comparison-fill-info",
-              },
-            ].map((item) => (
-              <article key={item.label} className="notification-summary-card">
-                <span>{item.label}</span>
-                <strong>{item.value}</strong>
-                <div className="comparison-track">
-                  <div
-                    className={item.toneClass}
-                    style={{
-                      width: `${recentNotifications.length > 0 ? Math.max((item.value / recentNotifications.length) * 100, 8) : 0}%`,
-                    }}
-                  />
-                </div>
-              </article>
-            ))}
-          </div>
-
-          {recentNotifications.length === 0 ? (
-            <article className="platform-note">
-              <strong>Sem alerta recente nesse periodo</strong>
-              <p>O banco nao trouxe nenhum caso que bata as regras de AR, TSH, CAA ou overtime no intervalo filtrado.</p>
-            </article>
-          ) : (
-            <div className="notification-feed">
-              {recentNotifications.map((notification) => (
-                <article key={notification.id} className="notification-card">
-                  <div className="notification-card-top">
-                    <div>
-                      <div className="user-card-meta">
-                        <strong>{notification.courierName}</strong>
-                        <span
-                          className={
-                            PERFORMANCE_NOTIFICATION_SEVERITY_CLASS_NAMES[notification.severity]
-                          }
-                        >
-                          {PERFORMANCE_NOTIFICATION_SEVERITY_LABELS[notification.severity]}
-                        </span>
-                        <span className="status-chip">
-                          {bagStatusLabels[notification.bagStatus] || notification.bagStatus}
-                        </span>
-                      </div>
-                      <p>
-                        {formatDateLabel(notification.date)}
-                        {notification.hotZone ? ` · ${notification.hotZone}` : ""}
-                        {notification.turno ? ` · ${BAG_SHIFT_LABELS[notification.turno]}` : ""}
-                        {notification.phoneNumber ? ` · ${notification.phoneNumber}` : ""}
-                      </p>
-                    </div>
-                    <div className="notification-meta-stack">
-                      <span>Operador: {notification.operatorName}</span>
-                      <span>Pedidos: {notification.totalOrders}</span>
-                    </div>
-                  </div>
-
-                  <div className="notification-reasons">
-                    {notification.reasons.map((reason) => (
-                      <span key={`${notification.id}-${reason.key}`} className="notification-reason-chip">
-                        {reason.label}
-                      </span>
-                    ))}
-                  </div>
-
-                  <div className="notification-metrics">
-                    <span>
-                      <strong>TSH</strong>
-                      <span>{formatMetricLabel(notification.avgTsh)}</span>
-                    </span>
-                    <span>
-                      <strong>AR</strong>
-                      <span>{formatMetricLabel(notification.avgAr)}</span>
-                    </span>
-                    <span>
-                      <strong>CAA</strong>
-                      <span>{formatMetricLabel(notification.avgCaa, { reverse: true })}</span>
-                    </span>
-                    <span>
-                      <strong>Overtime</strong>
-                      <span>{formatMetricLabel(notification.avgOvertime, { reverse: true })}</span>
-                    </span>
+            <div className="notification-summary-grid">
+              {[
+                {
+                  label: "Casos no periodo",
+                  value: recentNotifications.length,
+                  toneClass: "comparison-fill-neutral",
+                },
+                {
+                  label: "Criticos",
+                  value: notificationCriticalCount,
+                  toneClass: "comparison-fill-danger",
+                },
+                {
+                  label: "AR zerado",
+                  value: notificationArZeroCount,
+                  toneClass: "comparison-fill-warning",
+                },
+                {
+                  label: "CAA alto",
+                  value: notificationCaaHighCount,
+                  toneClass: "comparison-fill-info",
+                },
+              ].map((item) => (
+                <article key={item.label} className="notification-summary-card">
+                  <span>{item.label}</span>
+                  <strong>{item.value}</strong>
+                  <div className="comparison-track">
+                    <div
+                      className={item.toneClass}
+                      style={{
+                        width: `${recentNotifications.length > 0 ? Math.max((item.value / recentNotifications.length) * 100, 8) : 0}%`,
+                      }}
+                    />
                   </div>
                 </article>
               ))}
             </div>
-          )}
-        </section>
-      ) : (
-        <section className="panel">
-          <div className="panel-header">
-            <div>
-              <h2>Performance dos entregadores</h2>
-              <p>Abra essa visao so quando quiser conferir as regras de alerta e o calculo operacional.</p>
-            </div>
-            <Link href={performanceViewHref} className="secondary-button link-button">
-              Verificar Performance
-            </Link>
-          </div>
-        </section>
-      )}
 
-      {citiesResult.data.length === 0 ? (
+            {recentNotifications.length === 0 ? (
+              <article className="platform-note">
+                <strong>Sem alerta recente nesse periodo</strong>
+                <p>O banco nao trouxe nenhum caso que bata as regras de AR, TSH, CAA ou overtime no intervalo filtrado.</p>
+              </article>
+            ) : (
+              <div className="notification-feed">
+                {recentNotifications.map((notification) => (
+                  <article key={notification.id} className="notification-card">
+                    <div className="notification-card-top">
+                      <div>
+                        <div className="user-card-meta">
+                          <strong>{notification.courierName}</strong>
+                          <span
+                            className={
+                              PERFORMANCE_NOTIFICATION_SEVERITY_CLASS_NAMES[notification.severity]
+                            }
+                          >
+                            {PERFORMANCE_NOTIFICATION_SEVERITY_LABELS[notification.severity]}
+                          </span>
+                          <span className="status-chip">
+                            {bagStatusLabels[notification.bagStatus] || notification.bagStatus}
+                          </span>
+                        </div>
+                        <p>
+                          {formatDateLabel(notification.date)}
+                          {notification.hotZone ? ` · ${notification.hotZone}` : ""}
+                          {notification.turno ? ` · ${BAG_SHIFT_LABELS[notification.turno]}` : ""}
+                          {notification.phoneNumber ? ` · ${notification.phoneNumber}` : ""}
+                        </p>
+                      </div>
+                      <div className="notification-meta-stack">
+                        <span>Operador: {notification.operatorName}</span>
+                        <span>Pedidos: {notification.totalOrders}</span>
+                      </div>
+                    </div>
+
+                    <div className="notification-reasons">
+                      {notification.reasons.map((reason) => (
+                        <span key={`${notification.id}-${reason.key}`} className="notification-reason-chip">
+                          {reason.label}
+                        </span>
+                      ))}
+                    </div>
+
+                    <div className="notification-metrics">
+                      <span>
+                        <strong>TSH</strong>
+                        <span>{formatMetricLabel(notification.avgTsh)}</span>
+                      </span>
+                      <span>
+                        <strong>AR</strong>
+                        <span>{formatMetricLabel(notification.avgAr)}</span>
+                      </span>
+                      <span>
+                        <strong>CAA</strong>
+                        <span>{formatMetricLabel(notification.avgCaa, { reverse: true })}</span>
+                      </span>
+                      <span>
+                        <strong>Overtime</strong>
+                        <span>{formatMetricLabel(notification.avgOvertime, { reverse: true })}</span>
+                      </span>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        }
+        entregadoresContent={
+          <>
+            {citiesResult.data.length === 0 ? (
         <section className="panel">
           <div className="panel-header">
             <div>
@@ -2517,9 +2459,9 @@ async function EntregadoresContent({
             </Link>
           </div>
         </section>
-      ) : null}
+            ) : null}
 
-      {citiesResult.data.length > 0 && regionsResult.data.length === 0 ? (
+            {citiesResult.data.length > 0 && regionsResult.data.length === 0 ? (
         <section className="panel">
           <div className="panel-header">
             <div>
@@ -2531,9 +2473,9 @@ async function EntregadoresContent({
             </Link>
           </div>
         </section>
-      ) : null}
+            ) : null}
 
-      {bagStatusesResult.data.length === 0 ? (
+            {bagStatusesResult.data.length === 0 ? (
         <section className="panel">
           <div className="panel-header">
             <div>
@@ -2548,9 +2490,9 @@ async function EntregadoresContent({
             </Link>
           </div>
         </section>
-      ) : null}
+            ) : null}
 
-      {operators.length === 0 ? (
+            {operators.length === 0 ? (
         <section className="panel">
           <div className="panel-header">
             <div>
@@ -2559,28 +2501,31 @@ async function EntregadoresContent({
             </div>
           </div>
         </section>
-      ) : null}
+            ) : null}
 
-      <CourierPanelClient
-        couriers={couriersWithInsights}
-        bagStatuses={bagStatusesResult.data}
-        bagStatusLabels={bagStatusLabels}
-        availableHotZones={availableHotZones}
-        initialSearch={rawSearch}
-        initialBagStatus={selectedBagStatus}
-        initialHotZone={selectedHotZone}
-        initialTurno={selectedTurno}
-        initialOperationalFilter={operationalFilter}
-        initialRankingOrder={rankingOrder}
-        initialDataInicio={selectedDashboardStart}
-        initialDataFim={selectedDashboardEnd}
-        defaultDataInicio={defaultDashboardStart}
-        defaultDataFim={defaultDashboardEnd}
-        createEnabled={
-          citiesResult.data.length > 0 &&
-          regionsResult.data.length > 0 &&
-          operators.length > 0 &&
-          bagStatusesResult.data.length > 0
+            <CourierPanelClient
+              couriers={couriersWithInsights}
+              bagStatuses={bagStatusesResult.data}
+              bagStatusLabels={bagStatusLabels}
+              availableHotZones={availableHotZones}
+              initialSearch={rawSearch}
+              initialBagStatus={selectedBagStatus}
+              initialHotZone={selectedHotZone}
+              initialTurno={selectedTurno}
+              initialOperationalFilter={operationalFilter}
+              initialRankingOrder={rankingOrder}
+              initialDataInicio={selectedDashboardStart}
+              initialDataFim={selectedDashboardEnd}
+              defaultDataInicio={defaultDashboardStart}
+              defaultDataFim={defaultDashboardEnd}
+              createEnabled={
+                citiesResult.data.length > 0 &&
+                regionsResult.data.length > 0 &&
+                operators.length > 0 &&
+                bagStatusesResult.data.length > 0
+              }
+            />
+          </>
         }
       />
     </>
