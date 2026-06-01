@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { unstable_cache } from "next/cache";
-import { Suspense } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { BagStatusForm } from "@/components/bag-status-form";
@@ -1694,6 +1693,7 @@ async function buildEntregadoresAnalytics(
   tenantId: string,
   selectedDashboardStart: string,
   selectedDashboardEnd: string,
+  includeContextPerformances: boolean,
   includePerformanceView: boolean,
 ): Promise<EntregadoresAnalyticsPayload> {
   const [couriersResult, latestPerformanceDate] = await Promise.all([
@@ -1842,11 +1842,13 @@ async function buildEntregadoresAnalytics(
       matchedShiftRows,
       latestPerformanceDate,
     );
-    const contextPerformances = buildCourierContextPerformances(
-      matchedShiftActivityRows,
-      matchedShiftRows,
-      latestPerformanceDate,
-    );
+    const contextPerformances = includeContextPerformances
+      ? buildCourierContextPerformances(
+          matchedShiftActivityRows,
+          matchedShiftRows,
+          latestPerformanceDate,
+        )
+      : [];
     const listPerformance = performance;
     const latestNotification = includePerformanceView
       ? buildLatestPerformanceNotification(courier, matchedDailyRows, matchedShiftRows)
@@ -1939,6 +1941,8 @@ async function getCachedEntregadoresAnalytics(
   tenantId: string,
   selectedDashboardStart: string,
   selectedDashboardEnd: string,
+  includeContextPerformances: boolean,
+  includePerformanceView: boolean,
 ) {
   return unstable_cache(
     async () =>
@@ -1946,79 +1950,17 @@ async function getCachedEntregadoresAnalytics(
         tenantId,
         selectedDashboardStart,
         selectedDashboardEnd,
-        true,
+        includeContextPerformances,
+        includePerformanceView,
       ),
     [
-      `bag-info-analytics-${tenantId}-${selectedDashboardStart}-${selectedDashboardEnd}-full`,
+      `bag-info-analytics-${tenantId}-${selectedDashboardStart}-${selectedDashboardEnd}-${includeContextPerformances ? "context" : "base"}-${includePerformanceView ? "performance" : "default"}`,
     ],
     {
       revalidate: BAG_INFO_CACHE_SECONDS,
       tags: [getBagInfoCacheTag(tenantId)],
     },
   )();
-}
-
-function EntregadoresContentFallback() {
-  return (
-    <>
-      <section className="dashboard-grid">
-        <section className="panel">
-          <div className="panel-header">
-            <div>
-              <h2>Visao da base</h2>
-              <p>Carregando os indicadores operacionais sem travar a abertura da tela.</p>
-            </div>
-            <span className="loading-chip">Carregando...</span>
-          </div>
-          <div className="comparison-bars">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <div key={`loading-row-${index}`} className="comparison-row">
-                <div className="comparison-row-top">
-                  <strong className="loading-block loading-block-text loading-block-text-short" />
-                  <span className="loading-block loading-block-badge" />
-                </div>
-                <div className="comparison-track">
-                  <div className="comparison-fill comparison-fill-neutral" style={{ width: `${28 + index * 12}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-        <section className="panel">
-          <div className="panel-header">
-            <div>
-              <h2>Graficos e tendencia</h2>
-              <p>Os graficos entram assim que a consulta principal terminar.</p>
-            </div>
-          </div>
-          <div className="entregadores-loading-chart loading-block" />
-        </section>
-      </section>
-
-      <section className="panel">
-        <div className="panel-header">
-          <div>
-            <h2>Painel de entregadores</h2>
-            <p>A estrutura ja abriu e a lista esta sendo preenchida.</p>
-          </div>
-        </div>
-        <div className="entregadores-loading-list">
-          {Array.from({ length: 2 }).map((_, index) => (
-            <article key={`courier-stream-${index}`} className="user-card user-card-stack">
-              <div className="entregadores-loading-card-top">
-                <div className="loading-block loading-block-title" />
-                <div className="loading-block loading-block-badge" />
-              </div>
-              <div className="entregadores-loading-lines">
-                <div className="loading-block loading-block-text" />
-                <div className="loading-block loading-block-text loading-block-text-short" />
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-    </>
-  );
 }
 
 async function EntregadoresContent({
@@ -2121,10 +2063,13 @@ async function EntregadoresContent({
   const selectedHotZone = availableHotZones.find(
     (value) => normalizeSearchValue(value) === normalizeSearchValue(rawHotZone),
   ) || "";
+  const needsContextPerformances = Boolean(selectedHotZone) || Boolean(selectedTurno);
   const analytics = await getCachedEntregadoresAnalytics(
     tenantId,
     selectedDashboardStart,
     selectedDashboardEnd,
+    needsContextPerformances,
+    showPerformanceView,
   );
   const foundationReadyWithCouriers = foundationReady && analytics.foundationReady;
   const couriersWithInsights = analytics.couriersWithInsights;
@@ -2548,12 +2493,10 @@ export default async function InformacoesBagPage({ searchParams }: InformacoesBa
       description="Olhe a base inteira, descubra quem esta rodando, quem sumiu da operacao e quem pode cobrir hot zones e periodos com mais seguranca."
       user={currentUser}
     >
-      <Suspense fallback={<EntregadoresContentFallback />}>
-        <EntregadoresContent
-          tenantId={currentUser.current_tenant.id}
-          resolvedSearchParams={resolvedSearchParams}
-        />
-      </Suspense>
+      <EntregadoresContent
+        tenantId={currentUser.current_tenant.id}
+        resolvedSearchParams={resolvedSearchParams}
+      />
     </AppShell>
   );
 }
