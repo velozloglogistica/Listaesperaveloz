@@ -534,7 +534,6 @@ export function CourierPanelClient({
     () => normalizeSearchValue(appliedFilters.search),
     [appliedFilters.search],
   );
-  const contextFilterActive = Boolean(appliedFilters.hotZone) || Boolean(appliedFilters.turno);
   const hasPendingChanges =
     draftFilters.search !== appliedFilters.search ||
     draftFilters.bagStatus !== appliedFilters.bagStatus ||
@@ -544,6 +543,7 @@ export function CourierPanelClient({
     draftFilters.rankingOrder !== appliedFilters.rankingOrder ||
     draftFilters.dataInicio !== appliedFilters.dataInicio ||
     draftFilters.dataFim !== appliedFilters.dataFim;
+  const contextFilterActive = Boolean(appliedFilters.hotZone) || Boolean(appliedFilters.turno);
 
   const filteredCouriers = useMemo(() => {
     const filtered = couriers.flatMap<FilteredCourierView>((courier) => {
@@ -607,6 +607,9 @@ export function CourierPanelClient({
       const periodChanged =
         draftFilters.dataInicio !== appliedFilters.dataInicio ||
         draftFilters.dataFim !== appliedFilters.dataFim;
+      const contextChanged =
+        draftFilters.hotZone !== appliedFilters.hotZone ||
+        draftFilters.turno !== appliedFilters.turno;
 
       const nextUrl = buildPanelUrl({
         busca: draftFilters.search,
@@ -619,7 +622,7 @@ export function CourierPanelClient({
         data_fim: draftFilters.dataFim,
       });
 
-      if (periodChanged) {
+      if (periodChanged || contextChanged) {
         router.replace(nextUrl, { scroll: false });
         return;
       }
@@ -647,6 +650,7 @@ export function CourierPanelClient({
       const periodChanged =
         appliedFilters.dataInicio !== defaultFilters.dataInicio ||
         appliedFilters.dataFim !== defaultFilters.dataFim;
+      const contextChanged = Boolean(appliedFilters.hotZone) || Boolean(appliedFilters.turno);
 
       const nextUrl = buildPanelUrl({
         busca: "",
@@ -659,7 +663,7 @@ export function CourierPanelClient({
         data_fim: defaultFilters.dataFim,
       });
 
-      if (periodChanged) {
+      if (periodChanged || contextChanged) {
         router.replace(nextUrl, { scroll: false });
         return;
       }
