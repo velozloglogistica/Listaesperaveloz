@@ -20,7 +20,12 @@ function syncViewInUrl(view: EntregadoresView) {
   }
 
   const nextUrl = `${url.pathname}${url.search}${url.hash}`;
-  window.history.replaceState(window.history.state, "", nextUrl);
+
+  if (`${window.location.pathname}${window.location.search}${window.location.hash}` === nextUrl) {
+    return;
+  }
+
+  window.history.replaceState({}, "", nextUrl);
 }
 
 export function EntregadoresViewToggle({
