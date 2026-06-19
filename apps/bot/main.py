@@ -410,6 +410,84 @@ def save_waitlist_request(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     supabase.table("waitlist_requests").insert(payload).execute()
 
 
+def get_campaign_recipient(recipient_id: str) -> Optional[dict]:
+    response = (
+        supabase.table("telegram_campaign_recipients")
+        .select("id,campaign_id,telegram_chat_id,status_resposta,resposta")
+        .eq("id", recipient_id)
+        .limit(1)
+        .execute()
+    )
+    data = response.data or []
+    return data[0] if data else None
+
+
+def get_campaign_buttons(campaign_id: str) -> Optional[dict]:
+    response = (
+        supabase.table("telegram_campaigns")
+        .select("id,botao_1,botao_2")
+        .eq("id", campaign_id)
+        .limit(1)
+        .execute()
+    )
+    data = response.data or []
+    return data[0] if data else None
+
+
+async def campaign_response_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    if not query:
+        return
+
+    await query.answer()
+
+    parts = (query.data or "").split(":")
+    if len(parts) != 3:
+        await query.edit_message_text("Resposta invalida. Tente novamente mais tarde.")
+        return
+
+    _, recipient_id, option_key = parts
+    recipient = get_campaign_recipient(recipient_id)
+
+    if not recipient:
+        await query.edit_message_text("Essa campanha nao foi encontrada ou ja expirou.")
+        return
+
+    effective_chat = update.effective_chat.id if update.effective_chat else None
+    stored_chat = recipient.get("telegram_chat_id")
+    if stored_chat and effective_chat and int(stored_chat) != int(effective_chat):
+        await query.edit_message_text("Esse botao nao pertence a esta conversa.")
+        return
+
+    if recipient.get("status_resposta") == "respondido":
+        resposta = recipient.get("resposta") or "Resposta ja registrada"
+        await query.edit_message_text(f"Voce ja respondeu anteriormente: {resposta}.")
+        return
+
+    campaign = get_campaign_buttons(recipient["campaign_id"])
+    if not campaign:
+        await query.edit_message_text("Campanha nao encontrada. Tente novamente mais tarde.")
+        return
+
+    if option_key == "1":
+        resposta = campaign["botao_1"]
+    elif option_key == "2":
+        resposta = campaign["botao_2"]
+    else:
+        await query.edit_message_text("Opcao invalida. Tente novamente mais tarde.")
+        return
+
+    supabase.table("telegram_campaign_recipients").update(
+        {
+            "status_resposta": "respondido",
+            "resposta": resposta,
+            "respondido_em": now_manaus().isoformat(),
+        }
+    ).eq("id", recipient_id).execute()
+
+    await query.edit_message_text("Resposta registrada com sucesso. Obrigado!")
+
+
 async def confirmar_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     await query.answer()
@@ -479,6 +557,7 @@ def main() -> None:
     )
 
     app.add_handler(CommandHandler("links", links))
+    app.add_handler(CallbackQueryHandler(campaign_response_callback, pattern=r"^campanha:"))
     app.add_handler(conv_handler)
 
     logger.info("Bot iniciado com sucesso.")

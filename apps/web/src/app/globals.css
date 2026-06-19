@@ -484,6 +484,17 @@ select {
   color: var(--text);
 }
 
+.textarea-input {
+  width: 100%;
+  min-height: 160px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--panel-2);
+  color: var(--text);
+  resize: vertical;
+}
+
 .filters-actions,
 .status-form {
   display: flex;
@@ -1321,6 +1332,12 @@ select:disabled {
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
 }
 
+.module-card-active {
+  border-color: rgba(15, 118, 110, 0.28);
+  box-shadow: 0 12px 28px rgba(15, 118, 110, 0.12);
+  background: linear-gradient(180deg, #ffffff 0%, #f0fdfa 100%);
+}
+
 .module-card p,
 .platform-note p {
   margin: 0;
@@ -1415,6 +1432,73 @@ select:disabled {
 .notification-card-top p {
   margin: 6px 0 0;
   color: var(--muted);
+}
+
+.campaign-form-grid {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 1fr 1.3fr;
+  gap: 12px;
+}
+
+.campaign-helper-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.campaign-variable-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.campaign-variable-list code {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--accent-strong);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.campaign-message-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbfd 100%);
+}
+
+.campaign-message-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.data-table {
+  width: 100%;
+  min-width: 1160px;
+  border-collapse: collapse;
+}
+
+.data-table th,
+.data-table td {
+  border-top: 1px solid var(--border);
+  padding: 14px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.data-table th {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .notification-meta-stack {
@@ -1897,6 +1981,7 @@ select:disabled {
   .efficiency-grid,
   .tenant-form-grid,
   .manual-form-grid,
+  .campaign-form-grid,
   .filters-grid,
   .access-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1925,6 +2010,7 @@ select:disabled {
   }
 
   .notification-summary-grid,
+  .campaign-helper-grid,
   .notification-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2002,8 +2088,10 @@ select:disabled {
   .profile-summary,
   .tenant-form-grid,
   .manual-form-grid,
+  .campaign-form-grid,
   .filters-grid,
   .access-grid,
+  .campaign-helper-grid,
   .hierarchy-form-grid,
   .user-form-grid {
     grid-template-columns: 1fr;
