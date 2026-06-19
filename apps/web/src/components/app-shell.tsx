@@ -7,6 +7,7 @@ import { canAccessModule, hasCompanyPermission, type AppUser } from "@/lib/auth"
 type AppShellProps = {
   currentPath:
     | "/"
+    | "/campanhas-telegram"
     | "/empresas"
     | "/lista-espera"
     | "/informacoes-bag"
@@ -65,6 +66,13 @@ export function AppShell({ currentPath, title, description, user, children }: Ap
       shortLabel: "S",
       group: "Gestao",
       visible: user.is_platform_admin,
+    },
+    {
+      href: "/campanhas-telegram",
+      label: "Campanhas Telegram",
+      shortLabel: "T",
+      group: "Operacao",
+      visible: canAccessModule(user, "waitlist"),
     },
     {
       href: "/informacoes-bag",
