@@ -425,13 +425,27 @@ def get_campaign_recipient(recipient_id: str) -> Optional[dict]:
 def get_campaign_buttons(campaign_id: str) -> Optional[dict]:
     response = (
         supabase.table("telegram_campaigns")
-        .select("id,botao_1,botao_2")
+        .select("id,botoes,botao_1,botao_2")
         .eq("id", campaign_id)
         .limit(1)
         .execute()
     )
     data = response.data or []
     return data[0] if data else None
+
+
+def normalize_campaign_buttons(campaign: dict) -> list[str]:
+    raw_buttons = campaign.get("botoes")
+    if isinstance(raw_buttons, list):
+        normalized = [str(item).strip() for item in raw_buttons if str(item).strip()]
+        if normalized:
+            return normalized
+
+    fallback = [
+        str(campaign.get("botao_1") or "").strip(),
+        str(campaign.get("botao_2") or "").strip(),
+    ]
+    return [item for item in fallback if item]
 
 
 async def campaign_response_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -469,13 +483,19 @@ async def campaign_response_callback(update: Update, context: ContextTypes.DEFAU
         await query.edit_message_text("Campanha nao encontrada. Tente novamente mais tarde.")
         return
 
-    if option_key == "1":
-        resposta = campaign["botao_1"]
-    elif option_key == "2":
-        resposta = campaign["botao_2"]
-    else:
+    buttons = normalize_campaign_buttons(campaign)
+
+    try:
+        option_index = int(option_key) - 1
+    except ValueError:
         await query.edit_message_text("Opcao invalida. Tente novamente mais tarde.")
         return
+
+    if option_index < 0 or option_index >= len(buttons):
+        await query.edit_message_text("Opcao invalida. Tente novamente mais tarde.")
+        return
+
+    resposta = buttons[option_index]
 
     supabase.table("telegram_campaign_recipients").update(
         {
