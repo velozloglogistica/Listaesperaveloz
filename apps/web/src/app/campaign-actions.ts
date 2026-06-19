@@ -13,6 +13,8 @@ export type CampaignActionState = {
   message: string;
 };
 
+type CampaignMode = "planilha" | "individual" | "grupo";
+
 type ImportedRecipient = {
   cpf: string;
   nome: string;
@@ -102,6 +104,70 @@ function chunkArray<T>(items: T[], size: number) {
   }
 
   return chunks;
+}
+
+function parseCampaignMode(value: FormDataEntryValue | null): CampaignMode {
+  if (value === "individual" || value === "grupo" || value === "planilha") {
+    return value;
+  }
+
+  return "planilha";
+}
+
+function parseButtonList(formData: FormData) {
+  const rawJson = String(formData.get("buttons_json") || "").trim();
+  const fallback = [String(formData.get("botao_1") || ""), String(formData.get("botao_2") || "")];
+  let parsedButtons: unknown = fallback;
+
+  if (rawJson) {
+    try {
+      parsedButtons = JSON.parse(rawJson);
+    } catch {
+      throw new Error("Nao foi possivel ler os botoes configurados.");
+    }
+  }
+
+  if (!Array.isArray(parsedButtons)) {
+    throw new Error("Os botoes da campanha sao invalidos.");
+  }
+
+  const buttons = parsedButtons
+    .map((value) => normalizeCell(value))
+    .filter(Boolean)
+    .filter((value, index, allValues) => allValues.findIndex((item) => item.toLowerCase() === value.toLowerCase()) === index);
+
+  if (buttons.length < 2) {
+    throw new Error("Adicione pelo menos dois botoes para a campanha.");
+  }
+
+  if (buttons.length > 6) {
+    throw new Error("Use no maximo seis botoes por campanha.");
+  }
+
+  return buttons;
+}
+
+function parseSelectedWaitlistIds(formData: FormData) {
+  const rawJson = String(formData.get("selected_waitlist_ids") || "").trim();
+
+  if (!rawJson) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(rawJson);
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+      .filter((value, index, allValues) => allValues.indexOf(value) === index);
+  } catch {
+    throw new Error("Nao foi possivel ler a selecao manual de destinatarios.");
+  }
 }
 
 async function parseSpreadsheet(file: File): Promise<ImportedRecipient[]> {
@@ -203,13 +269,116 @@ async function getWaitlistMatches(tenantId: string, cpfs: string[]) {
   return { latestWithChat, latestAny };
 }
 
+async function getWaitlistRecipientsByIds(tenantId: string, waitlistIds: string[]) {
+  const recipients: WaitlistMatch[] = [];
+
+  for (const idChunk of chunkArray(waitlistIds, 200)) {
+    const { data, error } = await supabaseServer
+      .from("waitlist_requests")
+      .select("id,cpf,nome,telefone,praca,horario_label,telegram_chat_id,created_at")
+      .eq("tenant_id", tenantId)
+      .in("id", idChunk);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    recipients.push(...((data || []) as WaitlistMatch[]));
+  }
+
+  const recipientById = new Map(recipients.map((item) => [item.id, item] as const));
+
+  return waitlistIds
+    .map((id) => recipientById.get(id))
+    .filter(Boolean)
+    .reduce<ImportedRecipient[]>((accumulator, item) => {
+      if (!item) {
+        return accumulator;
+      }
+
+      const cpf = sanitizeDigits(item.cpf || "");
+      const nome = normalizeCell(item.nome);
+      const telefone = sanitizeDigits(item.telefone || "");
+      const hotzone = normalizeCell(item.praca);
+      const turno = normalizeCell(item.horario_label);
+
+      if (!cpf || !nome) {
+        return accumulator;
+      }
+
+      if (accumulator.some((existingRecipient) => existingRecipient.cpf === cpf)) {
+        return accumulator;
+      }
+
+      accumulator.push({
+        cpf,
+        nome,
+        telefone,
+        hotzone,
+        turno,
+      });
+
+      return accumulator;
+    }, []);
+}
+
+async function resolveCampaignRecipients(params: {
+  tenantId: string;
+  mode: CampaignMode;
+  formData: FormData;
+}) {
+  if (params.mode === "planilha") {
+    const spreadsheet = params.formData.get("planilha");
+
+    if (!(spreadsheet instanceof File) || spreadsheet.size === 0) {
+      throw new Error("Anexe a planilha da campanha.");
+    }
+
+    return parseSpreadsheet(spreadsheet);
+  }
+
+  const selectedIds = parseSelectedWaitlistIds(params.formData);
+
+  if (selectedIds.length === 0) {
+    throw new Error("Selecione pelo menos uma pessoa da base para disparar a campanha.");
+  }
+
+  if (params.mode === "individual" && selectedIds.length !== 1) {
+    throw new Error("No modo individual, selecione somente uma pessoa.");
+  }
+
+  const recipients = await getWaitlistRecipientsByIds(params.tenantId, selectedIds);
+
+  if (recipients.length === 0) {
+    throw new Error("Nenhum destinatario valido foi encontrado na selecao manual.");
+  }
+
+  if (params.mode === "individual" && recipients.length !== 1) {
+    throw new Error("Nao foi possivel confirmar o destinatario individual selecionado.");
+  }
+
+  return recipients;
+}
+
+function buildInlineKeyboard(buttons: string[], recipientId: string) {
+  return chunkArray(buttons, 2).map((buttonRow, rowIndex) =>
+    buttonRow.map((buttonLabel, columnIndex) => {
+      const optionIndex = rowIndex * 2 + columnIndex + 1;
+
+      return {
+        text: buttonLabel,
+        callback_data: `campanha:${recipientId}:${optionIndex}`,
+      };
+    }),
+  );
+}
+
 async function sendTelegramMessage(params: {
   token: string;
   chatId: number;
   text: string;
   recipientId: string;
-  button1: string;
-  button2: string;
+  buttons: string[];
 }) {
   const response = await fetch(`https://api.telegram.org/bot${params.token}/sendMessage`, {
     method: "POST",
@@ -221,18 +390,7 @@ async function sendTelegramMessage(params: {
       chat_id: params.chatId,
       text: params.text,
       reply_markup: {
-        inline_keyboard: [
-          [
-            {
-              text: params.button1,
-              callback_data: `campanha:${params.recipientId}:1`,
-            },
-            {
-              text: params.button2,
-              callback_data: `campanha:${params.recipientId}:2`,
-            },
-          ],
-        ],
+        inline_keyboard: buildInlineKeyboard(params.buttons, params.recipientId),
       },
     }),
   });
@@ -254,9 +412,7 @@ export async function createTelegramCampaignAction(
   const tenantId = actor.current_tenant.id;
   const nomeCampanha = String(formData.get("nome_campanha") || "").trim();
   const mensagem = String(formData.get("mensagem") || "").trim();
-  const botao1 = String(formData.get("botao_1") || "").trim();
-  const botao2 = String(formData.get("botao_2") || "").trim();
-  const spreadsheet = formData.get("planilha");
+  const modoDisparo = parseCampaignMode(formData.get("target_mode"));
   const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN || "";
 
   if (!nomeCampanha) {
@@ -267,18 +423,6 @@ export async function createTelegramCampaignAction(
     return { status: "error", message: "Informe a mensagem da campanha." };
   }
 
-  if (!botao1 || !botao2) {
-    return { status: "error", message: "Preencha os dois botoes da campanha." };
-  }
-
-  if (botao1.toLowerCase() === botao2.toLowerCase()) {
-    return { status: "error", message: "Os botoes precisam ter textos diferentes." };
-  }
-
-  if (!(spreadsheet instanceof File) || spreadsheet.size === 0) {
-    return { status: "error", message: "Anexe a planilha da campanha." };
-  }
-
   if (!telegramBotToken) {
     return {
       status: "error",
@@ -287,13 +431,19 @@ export async function createTelegramCampaignAction(
   }
 
   let importedRecipients: ImportedRecipient[];
+  let buttons: string[];
 
   try {
-    importedRecipients = await parseSpreadsheet(spreadsheet);
+    buttons = parseButtonList(formData);
+    importedRecipients = await resolveCampaignRecipients({
+      tenantId,
+      mode: modoDisparo,
+      formData,
+    });
   } catch (error) {
     return {
       status: "error",
-      message: error instanceof Error ? error.message : "Nao foi possivel ler a planilha.",
+      message: error instanceof Error ? error.message : "Nao foi possivel preparar a campanha.",
     };
   }
 
@@ -311,8 +461,10 @@ export async function createTelegramCampaignAction(
         tenant_id: tenantId,
         nome_campanha: nomeCampanha,
         mensagem,
-        botao_1: botao1,
-        botao_2: botao2,
+        botao_1: buttons[0],
+        botao_2: buttons[1],
+        botoes: buttons,
+        modo_disparo: modoDisparo,
         total_planilha: totalPlanilha,
         total_com_chat_id: totalComChatId,
         total_sem_chat_id: totalSemChatId,
@@ -367,13 +519,14 @@ export async function createTelegramCampaignAction(
 
     let totalEnviado = 0;
     let totalErro = 0;
+    const sourceRecipientByCpf = new Map(importedRecipients.map((item) => [item.cpf, item] as const));
 
     for (const recipient of insertedRecipients as InsertedRecipient[]) {
       if (!recipient.telegram_chat_id) {
         continue;
       }
 
-      const sourceRecipient = importedRecipients.find((item) => item.cpf === recipient.cpf);
+      const sourceRecipient = sourceRecipientByCpf.get(recipient.cpf);
 
       if (!sourceRecipient) {
         totalErro += 1;
@@ -394,8 +547,7 @@ export async function createTelegramCampaignAction(
           chatId: recipient.telegram_chat_id,
           text: renderedMessage,
           recipientId: recipient.id,
-          button1: botao1,
-          button2: botao2,
+          buttons,
         });
 
         if (result.ok) {

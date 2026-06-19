@@ -15,6 +15,8 @@ type TelegramCampaign = {
   mensagem: string;
   botao_1: string;
   botao_2: string;
+  botoes: string[] | null;
+  modo_disparo: "planilha" | "individual" | "grupo" | null;
   total_planilha: number;
   total_com_chat_id: number;
   total_sem_chat_id: number;
@@ -39,6 +41,17 @@ type TelegramCampaignRecipient = {
   created_at: string;
 };
 
+type CampaignRecipientOption = {
+  id: string;
+  cpf: string;
+  nome: string;
+  telefone: string | null;
+  hotzone: string | null;
+  turno: string | null;
+  telegram_chat_id: number | null;
+  created_at: string;
+};
+
 function firstParam(value?: string | string[]) {
   if (Array.isArray(value)) {
     return value[0] ?? "";
@@ -59,6 +72,27 @@ function formatDateTime(value: string | null) {
   }).format(new Date(value));
 }
 
+function getCampaignButtons(campaign: TelegramCampaign | null) {
+  if (!campaign) {
+    return [];
+  }
+
+  const rawButtons = Array.isArray(campaign.botoes) ? campaign.botoes : [campaign.botao_1, campaign.botao_2];
+  return rawButtons.filter(Boolean);
+}
+
+function getModeLabel(mode: TelegramCampaign["modo_disparo"]) {
+  if (mode === "individual") {
+    return "Individual";
+  }
+
+  if (mode === "grupo") {
+    return "Grupo da base";
+  }
+
+  return "Planilha";
+}
+
 async function getCampaigns(tenantId: string) {
   const { data, error } = await supabaseServer
     .from("telegram_campaigns")
@@ -72,6 +106,41 @@ async function getCampaigns(tenantId: string) {
   }
 
   return (data || []) as TelegramCampaign[];
+}
+
+async function getCampaignRecipientOptions(tenantId: string) {
+  const { data, error } = await supabaseServer
+    .from("waitlist_requests")
+    .select("id,cpf,nome,telefone,praca,horario_label,telegram_chat_id,created_at")
+    .eq("tenant_id", tenantId)
+    .order("created_at", { ascending: false })
+    .limit(1200);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const uniqueRecipients = new Map<string, CampaignRecipientOption>();
+
+  for (const item of data || []) {
+    const cpf = String(item.cpf || "").replace(/\D/g, "");
+    if (!cpf || uniqueRecipients.has(cpf)) {
+      continue;
+    }
+
+    uniqueRecipients.set(cpf, {
+      id: String(item.id),
+      cpf,
+      nome: String(item.nome || "Sem nome"),
+      telefone: item.telefone ? String(item.telefone) : null,
+      hotzone: item.praca ? String(item.praca) : null,
+      turno: item.horario_label ? String(item.horario_label) : null,
+      telegram_chat_id: typeof item.telegram_chat_id === "number" ? item.telegram_chat_id : null,
+      created_at: String(item.created_at || ""),
+    });
+  }
+
+  return Array.from(uniqueRecipients.values());
 }
 
 async function getCampaignRecipients(tenantId: string, campaignId: string) {
@@ -100,35 +169,34 @@ export default async function TelegramCampaignsPage({
   const currentUser = await requireWaitlistAccess();
   const tenantId = currentUser.current_tenant.id;
   const campaigns = await getCampaigns(tenantId);
+  const recipientOptions = await getCampaignRecipientOptions(tenantId);
   const selectedCampaign =
     campaigns.find((item) => item.id === selectedCampaignId) || campaigns[0] || null;
   const recipients = selectedCampaign
     ? await getCampaignRecipients(tenantId, selectedCampaign.id)
     : [];
-
-  const button1Responses = selectedCampaign
-    ? recipients.filter((item) => item.resposta === selectedCampaign.botao_1).length
-    : 0;
-  const button2Responses = selectedCampaign
-    ? recipients.filter((item) => item.resposta === selectedCampaign.botao_2).length
-    : 0;
+  const campaignButtons = getCampaignButtons(selectedCampaign);
+  const buttonResponseCards = campaignButtons.map((buttonLabel) => ({
+    label: buttonLabel,
+    total: recipients.filter((item) => item.resposta === buttonLabel).length,
+  }));
   const pendingResponses = recipients.filter((item) => item.status_resposta === "aguardando").length;
 
   return (
     <AppShell
       currentPath="/campanhas-telegram"
       title="Campanhas Telegram"
-      description="Importe uma planilha, dispare mensagens automaticas pelo chat_id e acompanhe as respostas em tempo real."
+      description="Crie campanhas profissionais, escolha o publico por planilha ou pela base e acompanhe respostas em tempo real."
       user={currentUser}
     >
       <section className="panel">
         <div className="panel-header">
           <div>
             <h2>Nova campanha</h2>
-            <p>O disparo cruza o CPF da planilha com `waitlist_requests` e usa apenas `telegram_chat_id`.</p>
+            <p>Dispare por planilha, escolha uma pessoa individualmente ou monte grupos completos da base.</p>
           </div>
         </div>
-        <TelegramCampaignForm />
+        <TelegramCampaignForm baseRecipients={recipientOptions} />
       </section>
 
       <section className="panel">
@@ -151,8 +219,9 @@ export default async function TelegramCampaignsPage({
               >
                 <strong>{campaign.nome_campanha}</strong>
                 <p>{formatDateTime(campaign.created_at)}</p>
+                <p>Modo: {getModeLabel(campaign.modo_disparo)}</p>
                 <p>
-                  Planilha: {campaign.total_planilha} | Enviados: {campaign.total_enviado} | Sem chat:{" "}
+                  Total: {campaign.total_planilha} | Enviados: {campaign.total_enviado} | Sem chat:{" "}
                   {campaign.total_sem_chat_id}
                 </p>
               </Link>
@@ -169,7 +238,10 @@ export default async function TelegramCampaignsPage({
       {selectedCampaign ? (
         <>
           <section className="summary-grid">
-            <SummaryCard title="Total na planilha" value={selectedCampaign.total_planilha} />
+            <SummaryCard
+              title={selectedCampaign.modo_disparo === "planilha" ? "Total na planilha" : "Total selecionado"}
+              value={selectedCampaign.total_planilha}
+            />
             <SummaryCard title="Com chat_id" value={selectedCampaign.total_com_chat_id} />
             <SummaryCard title="Sem chat_id" value={selectedCampaign.total_sem_chat_id} />
             <SummaryCard title="Enviados" value={selectedCampaign.total_enviado} />
@@ -177,10 +249,21 @@ export default async function TelegramCampaignsPage({
 
           <section className="summary-grid">
             <SummaryCard title="Erros de envio" value={selectedCampaign.total_erro} />
-            <SummaryCard title={`Responderam ${selectedCampaign.botao_1}`} value={button1Responses} />
-            <SummaryCard title={`Responderam ${selectedCampaign.botao_2}`} value={button2Responses} />
             <SummaryCard title="Ainda sem resposta" value={pendingResponses} />
+            <SummaryCard title="Modo da campanha" value={getModeLabel(selectedCampaign.modo_disparo)} />
           </section>
+
+          {buttonResponseCards.length > 0 ? (
+            <section className="summary-grid">
+              {buttonResponseCards.map((buttonCard) => (
+                <SummaryCard
+                  key={buttonCard.label}
+                  title={`Responderam ${buttonCard.label}`}
+                  value={buttonCard.total}
+                />
+              ))}
+            </section>
+          ) : null}
 
           <section className="panel">
             <div className="panel-header">
@@ -192,9 +275,11 @@ export default async function TelegramCampaignsPage({
             <div className="campaign-message-card">
               <strong>Mensagem enviada</strong>
               <p>{selectedCampaign.mensagem}</p>
+              <span className="day-chip day-chip-info">{getModeLabel(selectedCampaign.modo_disparo)}</span>
               <div className="campaign-variable-list">
-                <code>{selectedCampaign.botao_1}</code>
-                <code>{selectedCampaign.botao_2}</code>
+                {campaignButtons.map((buttonLabel) => (
+                  <code key={buttonLabel}>{buttonLabel}</code>
+                ))}
               </div>
             </div>
           </section>

@@ -36,6 +36,10 @@ create table if not exists public.telegram_campaigns (
   mensagem text not null,
   botao_1 text not null,
   botao_2 text not null,
+  botoes jsonb not null default '[]'::jsonb,
+  modo_disparo text not null default 'planilha' check (
+    modo_disparo in ('planilha', 'individual', 'grupo')
+  ),
   total_planilha integer not null default 0,
   total_com_chat_id integer not null default 0,
   total_sem_chat_id integer not null default 0,

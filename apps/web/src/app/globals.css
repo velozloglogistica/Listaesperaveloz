@@ -1436,14 +1436,172 @@ select:disabled {
 
 .campaign-form-grid {
   display: grid;
-  grid-template-columns: 1.6fr 1fr 1fr 1.3fr;
+  grid-template-columns: 1.5fr 1.1fr;
   gap: 12px;
+}
+
+.campaign-builder-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(320px, 0.9fr);
+  gap: 18px;
+}
+
+.campaign-main-panel,
+.campaign-side-panel {
+  display: grid;
+  gap: 16px;
 }
 
 .campaign-helper-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
+}
+
+.campaign-card {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbfd 100%);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+}
+
+.campaign-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.campaign-card-copy {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.campaign-section-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.1);
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.campaign-mode-toolbar {
+  display: grid;
+  gap: 8px;
+}
+
+.campaign-mode-toggle {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.campaign-mode-active {
+  background: linear-gradient(135deg, rgba(15, 118, 110, 0.92) 0%, rgba(20, 184, 166, 0.82) 100%);
+  color: #ffffff;
+  border-color: rgba(94, 234, 212, 0.28);
+  box-shadow: 0 10px 24px rgba(15, 118, 110, 0.18);
+}
+
+.campaign-buttons-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.campaign-button-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
+.campaign-search-toolbar {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.5fr) auto auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.campaign-selection-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.campaign-selection-summary {
+  display: grid;
+  gap: 2px;
+  min-width: 120px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fffef9;
+  text-align: center;
+}
+
+.campaign-selection-summary strong {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.campaign-selection-summary span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.campaign-recipient-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.campaign-recipient-card {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: #ffffff;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.campaign-recipient-card:hover {
+  border-color: rgba(15, 118, 110, 0.24);
+  box-shadow: 0 12px 26px rgba(15, 118, 110, 0.08);
+  transform: translateY(-1px);
+}
+
+.campaign-recipient-card p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.campaign-recipient-card-active {
+  border-color: rgba(15, 118, 110, 0.34);
+  background: linear-gradient(180deg, #ffffff 0%, #ecfeff 100%);
+  box-shadow: 0 14px 28px rgba(15, 118, 110, 0.12);
+}
+
+.campaign-recipient-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .campaign-variable-list {
@@ -1981,6 +2139,7 @@ select:disabled {
   .efficiency-grid,
   .tenant-form-grid,
   .manual-form-grid,
+  .campaign-builder-grid,
   .campaign-form-grid,
   .filters-grid,
   .access-grid {
@@ -2011,6 +2170,7 @@ select:disabled {
 
   .notification-summary-grid,
   .campaign-helper-grid,
+  .campaign-recipient-grid,
   .notification-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2088,10 +2248,12 @@ select:disabled {
   .profile-summary,
   .tenant-form-grid,
   .manual-form-grid,
+  .campaign-builder-grid,
   .campaign-form-grid,
   .filters-grid,
   .access-grid,
   .campaign-helper-grid,
+  .campaign-recipient-grid,
   .hierarchy-form-grid,
   .user-form-grid {
     grid-template-columns: 1fr;
@@ -2109,9 +2271,16 @@ select:disabled {
   .status-form,
   .manual-form-actions,
   .courier-toolbar,
+  .campaign-selection-actions,
+  .campaign-mode-toggle,
   .dashboard-date-toolbar {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .campaign-button-editor,
+  .campaign-search-toolbar {
+    grid-template-columns: 1fr;
   }
 
   .courier-search-input {
