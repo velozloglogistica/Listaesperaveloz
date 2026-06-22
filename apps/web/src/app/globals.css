@@ -1505,6 +1505,10 @@ select:disabled {
   gap: 18px;
 }
 
+.campaign-builder-grid-clean {
+  grid-template-columns: 1fr;
+}
+
 .campaign-main-panel,
 .campaign-side-panel {
   display: grid;
@@ -1572,6 +1576,12 @@ select:disabled {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.campaign-toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .campaign-mode-active {
@@ -1644,6 +1654,10 @@ select:disabled {
   grid-template-columns: minmax(280px, 1.5fr) auto auto;
   gap: 12px;
   align-items: center;
+}
+
+.campaign-search-toolbar-clean {
+  grid-template-columns: minmax(280px, 1.5fr) auto auto;
 }
 
 .campaign-selection-actions {
@@ -1746,6 +1760,20 @@ select:disabled {
   color: var(--accent-strong);
   font-size: 13px;
   font-weight: 700;
+}
+
+.campaign-recipient-selected {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid rgba(15, 118, 110, 0.14);
+  border-radius: 18px;
+  background: linear-gradient(180deg, #ffffff 0%, #f0fdfa 100%);
+}
+
+.campaign-recipient-selected span {
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .campaign-message-card {

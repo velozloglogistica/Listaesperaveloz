@@ -196,14 +196,14 @@ export default async function TelegramCampaignsPage({
     <AppShell
       currentPath="/campanhas-telegram"
       title="Campanhas Telegram"
-      description="Crie campanhas profissionais, escolha o publico por planilha ou pela base e acompanhe respostas em tempo real."
+      description="Dispare campanhas individuais ou para grupos oficiais do Telegram com um fluxo mais limpo."
       user={currentUser}
     >
       <section className="panel">
         <div className="panel-header">
           <div>
             <h2>Nova campanha</h2>
-            <p>Dispare por planilha, individualmente, por grupo da base ou direto nos grupos oficiais do Telegram com foto opcional.</p>
+            <p>Escolha uma pessoa com chat_id ou um grupo oficial do Telegram e envie mensagem, imagem e botoes so quando quiser.</p>
           </div>
         </div>
         <TelegramCampaignForm baseRecipients={recipientOptions} />
@@ -240,7 +240,7 @@ export default async function TelegramCampaignsPage({
         ) : (
           <div className="empty-state">
             <h2>Nenhuma campanha criada</h2>
-            <p>Suba a primeira planilha acima para abrir o historico de disparos.</p>
+            <p>Crie sua primeira campanha individual ou para grupo do Telegram.</p>
           </div>
         )}
       </section>
@@ -249,7 +249,7 @@ export default async function TelegramCampaignsPage({
         <>
           <section className="summary-grid">
             <SummaryCard
-              title={selectedCampaign.modo_disparo === "planilha" ? "Total na planilha" : "Total selecionado"}
+              title="Total selecionado"
               value={selectedCampaign.total_planilha}
             />
             <SummaryCard title="Com chat_id" value={selectedCampaign.total_com_chat_id} />

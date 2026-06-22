@@ -20,7 +20,7 @@ type CampaignRecipientOption = {
   created_at: string;
 };
 
-type CampaignTargetMode = "planilha" | "individual" | "grupo" | "grupo_telegram";
+type CampaignTargetMode = "individual" | "grupo_telegram";
 type CampaignButton = {
   id: string;
   label: string;
@@ -47,12 +47,14 @@ export function TelegramCampaignForm({
   baseRecipients: CampaignRecipientOption[];
 }) {
   const [state, formAction] = useActionState(createTelegramCampaignAction, initialState);
-  const [targetMode, setTargetMode] = useState<CampaignTargetMode>("planilha");
+  const [targetMode, setTargetMode] = useState<CampaignTargetMode>("individual");
   const buttonIdRef = useRef(2);
   const [buttons, setButtons] = useState<CampaignButton[]>([
-    { id: "button-1", label: "Vou" },
-    { id: "button-2", label: "Nao vou" },
+    { id: "button-1", label: "Sim" },
+    { id: "button-2", label: "Nao" },
   ]);
+  const [useButtons, setUseButtons] = useState(false);
+  const [useImage, setUseImage] = useState(false);
   const [search, setSearch] = useState("");
   const [onlyWithChat, setOnlyWithChat] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -94,6 +96,7 @@ export function TelegramCampaignForm({
     () => baseRecipients.filter((recipient) => selectedIds.includes(recipient.id)),
     [baseRecipients, selectedIds],
   );
+  const selectedRecipient = selectedRecipients[0] || null;
 
   function updateButton(index: number, value: string) {
     setButtons((currentButtons) =>
@@ -131,26 +134,7 @@ export function TelegramCampaignForm({
 
   function toggleRecipient(recipientId: string) {
     setSelectedIds((currentIds) => {
-      if (targetMode === "individual") {
-        return currentIds[0] === recipientId ? [] : [recipientId];
-      }
-
-      return currentIds.includes(recipientId)
-        ? currentIds.filter((currentId) => currentId !== recipientId)
-        : [...currentIds, recipientId];
-    });
-  }
-
-  function selectAllFiltered() {
-    setSelectedIds((currentIds) => {
-      if (targetMode === "individual") {
-        const firstRecipient = filteredRecipients[0];
-        return firstRecipient ? [firstRecipient.id] : currentIds;
-      }
-
-      const nextIds = new Set(currentIds);
-      filteredRecipients.forEach((recipient) => nextIds.add(recipient.id));
-      return Array.from(nextIds);
+      return currentIds[0] === recipientId ? [] : [recipientId];
     });
   }
 
@@ -169,44 +153,41 @@ export function TelegramCampaignForm({
   return (
     <form action={formAction} className="hierarchy-form">
       <input type="hidden" name="target_mode" value={targetMode} />
-      <input type="hidden" name="buttons_json" value={JSON.stringify(buttons.map((button) => button.label))} />
+      <input
+        type="hidden"
+        name="buttons_json"
+        value={JSON.stringify(useButtons ? buttons.map((button) => button.label) : [])}
+      />
+      <input type="hidden" name="usar_botoes" value={useButtons ? "true" : "false"} />
       <input type="hidden" name="selected_waitlist_ids" value={JSON.stringify(selectedIds)} />
       <input type="hidden" name="selected_group_ids" value={JSON.stringify(selectedGroupIds)} />
 
       <section className="campaign-intro-panel">
         <div className="campaign-intro-copy">
           <span className="campaign-section-eyebrow">Campanhas Telegram</span>
-          <h3>Monte, personalize e dispare com controle total</h3>
-          <p>
-            Escolha o publico, envie texto ou imagem com mensagem, configure quantos botoes quiser e acompanhe as respostas em tempo real.
-          </p>
+          <h3>Disparo simples e direto</h3>
+          <p>Selecione uma pessoa ou um grupo Telegram, escreva a mensagem e escolha se quer usar imagem e botoes.</p>
         </div>
         <div className="campaign-intro-metrics">
           <div className="campaign-intro-metric">
-            <strong>4 modos</strong>
-            <span>Planilha, individual, grupo e grupo Telegram</span>
+            <strong>2 modos</strong>
+            <span>Individual e Grupo Telegram</span>
           </div>
           <div className="campaign-intro-metric">
-            <strong>2 a 6 botoes</strong>
-            <span>Respostas dinamicas no Telegram</span>
+            <strong>Visual clean</strong>
+            <span>Mostra so o que voce decidir usar</span>
           </div>
           <div className="campaign-intro-metric">
             <strong>Foto opcional</strong>
-            <span>Junto com a mensagem, no individual ou em massa</span>
+            <span>Com mensagem curta ou longa</span>
           </div>
         </div>
       </section>
 
-      <section className="campaign-builder-grid">
+      <section className="campaign-builder-grid campaign-builder-grid-clean">
         <div className="campaign-main-panel">
-          <div className="campaign-form-grid">
-            <div className="campaign-card campaign-card-soft">
-              <div className="campaign-card-header">
-                <div>
-                  <span className="campaign-section-eyebrow">Configuracao</span>
-                  <h3>Dados principais</h3>
-                </div>
-              </div>
+          <div className="campaign-card campaign-card-soft">
+            <div className="campaign-form-grid">
               <input
                 className="text-input"
                 type="text"
@@ -214,45 +195,53 @@ export function TelegramCampaignForm({
                 placeholder="Nome da campanha"
                 required
               />
-            </div>
-
-            <div className="campaign-card campaign-card-soft">
               <div className="campaign-mode-toolbar">
                 <span className="campaign-section-eyebrow">Destino</span>
                 <div className="campaign-mode-toggle">
                   <button
                     type="button"
-                    className={targetMode === "planilha" ? "secondary-button campaign-mode-active" : "secondary-button"}
-                    onClick={() => setTargetMode("planilha")}
-                  >
-                    Planilha
-                  </button>
-                  <button
-                    type="button"
                     className={targetMode === "individual" ? "secondary-button campaign-mode-active" : "secondary-button"}
                     onClick={() => {
                       setTargetMode("individual");
-                      setSelectedIds((currentIds) => currentIds.slice(0, 1));
+                      setSelectedGroupIds([]);
                     }}
                   >
                     Individual
                   </button>
                   <button
                     type="button"
-                    className={targetMode === "grupo" ? "secondary-button campaign-mode-active" : "secondary-button"}
-                    onClick={() => setTargetMode("grupo")}
-                  >
-                    Grupo da base
-                  </button>
-                  <button
-                    type="button"
                     className={targetMode === "grupo_telegram" ? "secondary-button campaign-mode-active" : "secondary-button"}
-                    onClick={() => setTargetMode("grupo_telegram")}
+                    onClick={() => {
+                      setTargetMode("grupo_telegram");
+                      setSelectedIds([]);
+                      setUseButtons(false);
+                    }}
                   >
                     Grupo Telegram
                   </button>
                 </div>
               </div>
+            </div>
+
+            <div className="campaign-toggle-row">
+              <label className="checkbox-card">
+                <input
+                  type="checkbox"
+                  checked={useImage}
+                  onChange={(event) => setUseImage(event.target.checked)}
+                />
+                <span>Adicionar imagem</span>
+              </label>
+              {targetMode === "individual" ? (
+                <label className="checkbox-card">
+                  <input
+                    type="checkbox"
+                    checked={useButtons}
+                    onChange={(event) => setUseButtons(event.target.checked)}
+                  />
+                  <span>Usar botoes</span>
+                </label>
+              ) : null}
             </div>
           </div>
 
@@ -260,7 +249,12 @@ export function TelegramCampaignForm({
             <div className="campaign-card-header">
               <div>
                 <span className="campaign-section-eyebrow">Mensagem</span>
-                <h3>Texto do disparo</h3>
+                <h3>Conteudo do disparo</h3>
+                {targetMode === "individual" ? (
+                  <p className="campaign-card-copy">Voce pode usar `{nome}`, `{telefone}`, `{cpf}`, `{hotzone}` e `{turno}`.</p>
+                ) : (
+                  <p className="campaign-card-copy">No grupo Telegram, a mensagem vai exatamente como voce escrever.</p>
+                )}
               </div>
             </div>
             <textarea
@@ -269,27 +263,27 @@ export function TelegramCampaignForm({
               placeholder={
                 targetMode === "grupo_telegram"
                   ? "Ola time, hoje teremos uma operacao especial. Ativem os aplicativos e acompanhem as orientacoes abaixo."
-                  : "Ola {nome}, vimos que voce esta agendado para a escala do {turno} na hotzone {hotzone}. Hoje tera jogo do Brasil. Voce confirma presenca?"
+                  : "Ola {nome}, vimos que voce esta agendado para a escala do {turno} na hotzone {hotzone}."
               }
               rows={7}
               required
             />
           </div>
 
-          <div className="campaign-card">
-            <div className="campaign-card-header">
-              <div>
-                <span className="campaign-section-eyebrow">Midia</span>
-                <h3>Imagem opcional</h3>
-                <p className="campaign-card-copy">
-                  Se quiser, envie foto junto com a mensagem. Quando o texto for grande, o sistema manda a foto primeiro e o texto depois.
-                </p>
+          {useImage ? (
+            <div className="campaign-card">
+              <div className="campaign-card-header">
+                <div>
+                  <span className="campaign-section-eyebrow">Imagem</span>
+                  <h3>Arquivo do disparo</h3>
+                  <p className="campaign-card-copy">Aceita JPG, PNG e WEBP.</p>
+                </div>
               </div>
+              <input className="text-input" type="file" name="imagem_campanha" accept="image/png,image/jpeg,image/webp" />
             </div>
-            <input className="text-input" type="file" name="imagem_campanha" accept="image/png,image/jpeg,image/webp" />
-          </div>
+          ) : null}
 
-          {targetMode !== "grupo_telegram" ? (
+          {useButtons && targetMode === "individual" ? (
             <div className="campaign-card">
               <div className="campaign-card-header">
                 <div>
@@ -315,7 +309,7 @@ export function TelegramCampaignForm({
                           value={button.label}
                           onChange={(event) => updateButton(index, event.target.value)}
                           placeholder={`Botao ${index + 1}`}
-                          required
+                          required={useButtons}
                         />
                         <button
                           type="button"
@@ -332,68 +326,7 @@ export function TelegramCampaignForm({
                 })}
               </div>
             </div>
-          ) : (
-            <div className="campaign-card">
-              <div className="campaign-card-header">
-                <div>
-                  <span className="campaign-section-eyebrow">Botoes</span>
-                  <h3>Campanha em grupo</h3>
-                </div>
-              </div>
-              <p className="campaign-card-copy">
-                No modo `Grupo Telegram`, o disparo funciona como comunicacao do grupo. A mensagem pode ir com foto, mas sem botoes de resposta individuais.
-              </p>
-            </div>
-          )}
-          {targetMode === "planilha" ? (
-            <div className="campaign-card">
-              <div className="campaign-card-header">
-                <div>
-                  <span className="campaign-section-eyebrow">Origem</span>
-                  <h3>Importar planilha</h3>
-                </div>
-              </div>
-              <input
-                className="text-input"
-                type="file"
-                name="planilha"
-                accept=".xlsx,.xls,.csv"
-                required={targetMode === "planilha"}
-              />
-              <p className="campaign-card-copy">
-                Campos esperados: `cpf`, `nome`, `telefone`, `hotzone` e `turno`.
-              </p>
-            </div>
           ) : null}
-        </div>
-
-        <div className="campaign-side-panel">
-          <div className="access-panel">
-            <h3>Variaveis disponiveis</h3>
-            <p>Use os placeholders abaixo para personalizar a mensagem.</p>
-            <div className="campaign-variable-list">
-              <code>{"{nome}"}</code>
-              <code>{"{telefone}"}</code>
-              <code>{"{cpf}"}</code>
-              <code>{"{hotzone}"}</code>
-              <code>{"{turno}"}</code>
-            </div>
-            {targetMode === "grupo_telegram" ? (
-              <p className="campaign-card-copy">No grupo Telegram, o texto e enviado do jeito que voce escrever, sem personalizacao por pessoa.</p>
-            ) : null}
-          </div>
-
-          <div className="access-panel">
-            <h3>Regras do disparo</h3>
-            <p>O envio usa apenas `telegram_chat_id`. Sem chat valido, o sistema registra `sem_chat_id`.</p>
-            <p>Voce pode disparar por planilha, para uma pessoa individualmente, montar um grupo da base ou enviar direto para grupos oficiais do Telegram.</p>
-          </div>
-
-          <div className="access-panel campaign-tips-panel">
-            <h3>Dicas rapidas</h3>
-            <p>Use botoes curtos como `Sim`, `Nao`, `Vou`, `Nao vou` ou `Confirmo` para facilitar a resposta.</p>
-            <p>Antes de disparar, filtre a base para montar grupos operacionais mais precisos.</p>
-          </div>
         </div>
       </section>
 
@@ -402,10 +335,8 @@ export function TelegramCampaignForm({
           <div className="campaign-card-header">
             <div>
               <span className="campaign-section-eyebrow">Grupos oficiais</span>
-              <h3>Escolha para quais grupos enviar</h3>
-              <p className="campaign-card-copy">
-                Selecione um ou mais grupos fixos da operacao. O disparo vai usar o `chat_id` do proprio grupo.
-              </p>
+              <h3>Escolha os grupos</h3>
+              <p className="campaign-card-copy">Selecione um ou mais grupos oficiais para receber o disparo.</p>
             </div>
           </div>
 
@@ -433,33 +364,38 @@ export function TelegramCampaignForm({
         </section>
       ) : null}
 
-      {targetMode !== "planilha" && targetMode !== "grupo_telegram" ? (
+      {targetMode === "individual" ? (
         <section className="campaign-card">
           <div className="campaign-card-header">
             <div>
-              <span className="campaign-section-eyebrow">Selecao manual</span>
-              <h3>{targetMode === "individual" ? "Escolha uma pessoa" : "Monte seu grupo"}</h3>
-              <p className="campaign-card-copy">
-                Busque por nome, CPF, telefone, hotzone ou turno e selecione exatamente quem deve receber a campanha.
-              </p>
+              <span className="campaign-section-eyebrow">Destinatario</span>
+              <h3>Escolha uma pessoa</h3>
+              <p className="campaign-card-copy">Busque por nome, CPF, telefone, hotzone ou turno.</p>
             </div>
-            <div className="campaign-selection-actions">
-              <button type="button" className="secondary-button" onClick={selectAllFiltered}>
-                {targetMode === "individual" ? "Usar primeiro filtrado" : "Selecionar filtrados"}
-              </button>
-              <button type="button" className="secondary-button" onClick={clearSelection}>
-                Limpar selecao
-              </button>
-            </div>
+            {selectedRecipient ? (
+              <div className="campaign-selection-actions">
+                <div className="campaign-selection-summary">
+                  <strong>1</strong>
+                  <span>selecionado</span>
+                </div>
+              </div>
+            ) : (
+              <div className="campaign-selection-actions">
+                <div className="campaign-selection-summary">
+                  <strong>0</strong>
+                  <span>selecionado</span>
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="campaign-search-toolbar">
+          <div className="campaign-search-toolbar campaign-search-toolbar-clean">
             <input
               className="text-input courier-search-input"
               type="search"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Buscar por nome, CPF, telefone, hotzone ou turno"
+              placeholder="Buscar pessoa por nome, CPF, telefone, hotzone ou turno"
             />
             <label className="checkbox-card">
               <input
@@ -467,21 +403,21 @@ export function TelegramCampaignForm({
                 checked={onlyWithChat}
                 onChange={(event) => setOnlyWithChat(event.target.checked)}
               />
-              <span>Mostrar somente quem tem chat_id</span>
+              <span>Somente com chat_id</span>
             </label>
-            <div className="campaign-selection-summary">
-              <strong>{selectedRecipients.length}</strong>
-              <span>{targetMode === "individual" ? "selecionado" : "selecionados"}</span>
-            </div>
+            {selectedRecipient ? (
+              <button type="button" className="secondary-button" onClick={clearSelection}>
+                Limpar
+              </button>
+            ) : null}
           </div>
 
-          {selectedRecipients.length > 0 ? (
-            <div className="campaign-variable-list">
-              {selectedRecipients.map((recipient) => (
-                <code key={recipient.id}>
-                  {recipient.nome} | {recipient.cpf}
-                </code>
-              ))}
+          {selectedRecipient ? (
+            <div className="campaign-recipient-selected">
+              <strong>{selectedRecipient.nome}</strong>
+              <span>
+                {selectedRecipient.cpf} | {selectedRecipient.hotzone || "-"} | {selectedRecipient.turno || "-"}
+              </span>
             </div>
           ) : null}
 
@@ -514,7 +450,7 @@ export function TelegramCampaignForm({
           {filteredRecipients.length === 0 ? (
             <div className="empty-state">
               <h2>Nenhum destinatario encontrado</h2>
-              <p>Ajuste a busca ou desative o filtro de `chat_id` para ampliar os resultados.</p>
+              <p>Ajuste a busca ou remova o filtro de `chat_id`.</p>
             </div>
           ) : null}
         </section>
