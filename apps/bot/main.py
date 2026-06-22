@@ -291,6 +291,24 @@ async def links(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(group_links_message(), disable_web_page_preview=True)
 
 
+async def chatid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.effective_message
+    chat = update.effective_chat
+
+    if not message or not chat:
+        return
+
+    chat_title = getattr(chat, "title", None) or "Conversa privada"
+    chat_type = chat.type or "desconhecido"
+
+    await message.reply_text(
+        "Informacoes deste chat:\n\n"
+        f"Nome: {chat_title}\n"
+        f"Tipo: {chat_type}\n"
+        f"Chat ID: {chat.id}"
+    )
+
+
 async def escolher_praca(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     praca = (update.message.text or "").strip()
     if praca not in PRACAS.values():
@@ -576,6 +594,7 @@ def main() -> None:
         per_message=False,
     )
 
+    app.add_handler(CommandHandler("chatid", chatid))
     app.add_handler(CommandHandler("links", links))
     app.add_handler(CallbackQueryHandler(campaign_response_callback, pattern=r"^campanha:"))
     app.add_handler(conv_handler)
