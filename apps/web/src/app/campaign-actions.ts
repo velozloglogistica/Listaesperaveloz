@@ -7,13 +7,14 @@ import * as XLSX from "xlsx";
 
 import { requireWaitlistAccess } from "@/lib/auth";
 import { supabaseServer } from "@/lib/supabase-server";
+import { TELEGRAM_GROUP_TARGETS } from "@/lib/telegram-group-targets";
 
 export type CampaignActionState = {
   status: "idle" | "error";
   message: string;
 };
 
-type CampaignMode = "planilha" | "individual" | "grupo";
+type CampaignMode = "planilha" | "individual" | "grupo" | "grupo_telegram";
 
 type ImportedRecipient = {
   cpf: string;
@@ -42,6 +43,12 @@ type InsertedRecipient = {
   hotzone: string | null;
   turno: string | null;
   telegram_chat_id: number | null;
+};
+
+type PreparedCampaignMedia = {
+  fileName: string;
+  contentType: string;
+  buffer: Buffer;
 };
 
 const initialState: CampaignActionState = {
@@ -107,11 +114,56 @@ function chunkArray<T>(items: T[], size: number) {
 }
 
 function parseCampaignMode(value: FormDataEntryValue | null): CampaignMode {
-  if (value === "individual" || value === "grupo" || value === "planilha") {
+  if (value === "individual" || value === "grupo" || value === "planilha" || value === "grupo_telegram") {
     return value;
   }
 
   return "planilha";
+}
+
+function parseSelectedGroupIds(formData: FormData) {
+  const rawJson = String(formData.get("selected_group_ids") || "").trim();
+
+  if (!rawJson) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(rawJson);
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+      .filter((value, index, allValues) => allValues.indexOf(value) === index);
+  } catch {
+    throw new Error("Nao foi possivel ler os grupos do Telegram selecionados.");
+  }
+}
+
+async function parseCampaignMedia(formData: FormData) {
+  const uploadedMedia = formData.get("imagem_campanha");
+
+  if (!(uploadedMedia instanceof File) || uploadedMedia.size === 0) {
+    return null;
+  }
+
+  if (!uploadedMedia.type.startsWith("image/")) {
+    throw new Error("Anexe apenas imagem JPG, PNG ou WEBP na campanha.");
+  }
+
+  if (uploadedMedia.size > 9 * 1024 * 1024) {
+    throw new Error("A imagem da campanha deve ter no maximo 9 MB.");
+  }
+
+  return {
+    fileName: uploadedMedia.name || "campanha-imagem",
+    contentType: uploadedMedia.type || "image/jpeg",
+    buffer: Buffer.from(await uploadedMedia.arrayBuffer()),
+  } satisfies PreparedCampaignMedia;
 }
 
 function parseButtonList(formData: FormData) {
@@ -327,6 +379,10 @@ async function resolveCampaignRecipients(params: {
   mode: CampaignMode;
   formData: FormData;
 }) {
+  if (params.mode === "grupo_telegram") {
+    return [];
+  }
+
   if (params.mode === "planilha") {
     const spreadsheet = params.formData.get("planilha");
 
@@ -360,6 +416,22 @@ async function resolveCampaignRecipients(params: {
   return recipients;
 }
 
+function resolveSelectedTelegramGroups(formData: FormData) {
+  const selectedGroupIds = parseSelectedGroupIds(formData);
+
+  if (selectedGroupIds.length === 0) {
+    throw new Error("Selecione pelo menos um grupo do Telegram para disparar a campanha.");
+  }
+
+  const selectedGroups = TELEGRAM_GROUP_TARGETS.filter((group) => selectedGroupIds.includes(group.id));
+
+  if (selectedGroups.length !== selectedGroupIds.length) {
+    throw new Error("Um ou mais grupos selecionados nao sao validos.");
+  }
+
+  return selectedGroups;
+}
+
 function buildInlineKeyboard(buttons: string[], recipientId: string) {
   return chunkArray(buttons, 2).map((buttonRow, rowIndex) =>
     buttonRow.map((buttonLabel, columnIndex) => {
@@ -379,8 +451,83 @@ async function sendTelegramMessage(params: {
   text: string;
   recipientId: string;
   buttons: string[];
+  media: PreparedCampaignMedia | null;
+  includeButtons?: boolean;
 }) {
-  const response = await fetch(`https://api.telegram.org/bot${params.token}/sendMessage`, {
+  const shouldIncludeButtons = params.includeButtons ?? true;
+  const replyMarkup =
+    shouldIncludeButtons && params.buttons.length > 0
+      ? {
+          inline_keyboard: buildInlineKeyboard(params.buttons, params.recipientId),
+        }
+      : undefined;
+
+  if (!params.media) {
+    const response = await fetch(`https://api.telegram.org/bot${params.token}/sendMessage`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      cache: "no-store",
+      body: JSON.stringify({
+        chat_id: params.chatId,
+        text: params.text,
+        ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+      }),
+    });
+
+    const rawBody = await response.text();
+
+    return {
+      ok: response.ok,
+      status: response.status,
+      body: rawBody.slice(0, 1000),
+    };
+  }
+
+  const caption = params.text.length <= 1024 ? params.text : "";
+  const photoBody = new FormData();
+  const mediaBytes = new Uint8Array(params.media.buffer);
+  photoBody.append("chat_id", String(params.chatId));
+  photoBody.append(
+    "photo",
+    new Blob([mediaBytes], { type: params.media.contentType }),
+    params.media.fileName,
+  );
+
+  if (caption) {
+    photoBody.append("caption", caption);
+  }
+
+  if (replyMarkup && caption) {
+    photoBody.append("reply_markup", JSON.stringify(replyMarkup));
+  }
+
+  const photoResponse = await fetch(`https://api.telegram.org/bot${params.token}/sendPhoto`, {
+    method: "POST",
+    body: photoBody,
+    cache: "no-store",
+  });
+
+  const rawPhotoBody = await photoResponse.text();
+
+  if (!photoResponse.ok) {
+    return {
+      ok: false,
+      status: photoResponse.status,
+      body: rawPhotoBody.slice(0, 1000),
+    };
+  }
+
+  if (caption) {
+    return {
+      ok: true,
+      status: photoResponse.status,
+      body: rawPhotoBody.slice(0, 1000),
+    };
+  }
+
+  const messageResponse = await fetch(`https://api.telegram.org/bot${params.token}/sendMessage`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -389,18 +536,16 @@ async function sendTelegramMessage(params: {
     body: JSON.stringify({
       chat_id: params.chatId,
       text: params.text,
-      reply_markup: {
-        inline_keyboard: buildInlineKeyboard(params.buttons, params.recipientId),
-      },
+      ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
     }),
   });
 
-  const rawBody = await response.text();
+  const rawMessageBody = await messageResponse.text();
 
   return {
-    ok: response.ok,
-    status: response.status,
-    body: rawBody.slice(0, 1000),
+    ok: messageResponse.ok,
+    status: messageResponse.status,
+    body: rawMessageBody.slice(0, 1000),
   };
 }
 
@@ -432,9 +577,11 @@ export async function createTelegramCampaignAction(
 
   let importedRecipients: ImportedRecipient[];
   let buttons: string[];
+  let campaignMedia: PreparedCampaignMedia | null;
 
   try {
     buttons = parseButtonList(formData);
+    campaignMedia = await parseCampaignMedia(formData);
     importedRecipients = await resolveCampaignRecipients({
       tenantId,
       mode: modoDisparo,
@@ -448,11 +595,16 @@ export async function createTelegramCampaignAction(
   }
 
   try {
+    const selectedTelegramGroups =
+      modoDisparo === "grupo_telegram" ? resolveSelectedTelegramGroups(formData) : [];
     const cpfs = importedRecipients.map((item) => item.cpf);
     const { latestWithChat, latestAny } = await getWaitlistMatches(tenantId, cpfs);
 
-    const totalPlanilha = importedRecipients.length;
-    const totalComChatId = importedRecipients.filter((item) => latestWithChat.has(item.cpf)).length;
+    const totalPlanilha = modoDisparo === "grupo_telegram" ? selectedTelegramGroups.length : importedRecipients.length;
+    const totalComChatId =
+      modoDisparo === "grupo_telegram"
+        ? selectedTelegramGroups.length
+        : importedRecipients.filter((item) => latestWithChat.has(item.cpf)).length;
     const totalSemChatId = totalPlanilha - totalComChatId;
 
     const { data: createdCampaign, error: campaignError } = await supabaseServer
@@ -465,6 +617,9 @@ export async function createTelegramCampaignAction(
         botao_2: buttons[1],
         botoes: buttons,
         modo_disparo: modoDisparo,
+        target_group_names: selectedTelegramGroups.map((group) => group.nome),
+        tem_imagem: Boolean(campaignMedia),
+        nome_arquivo_imagem: campaignMedia?.fileName || null,
         total_planilha: totalPlanilha,
         total_com_chat_id: totalComChatId,
         total_sem_chat_id: totalSemChatId,
@@ -481,28 +636,46 @@ export async function createTelegramCampaignAction(
       };
     }
 
-    const recipientPayload = importedRecipients.map((item) => {
-      const matchedWithChat = latestWithChat.get(item.cpf);
-      const matchedAny = latestAny.get(item.cpf);
-      const chosenMatch = matchedWithChat || matchedAny;
+    const recipientPayload =
+      modoDisparo === "grupo_telegram"
+        ? selectedTelegramGroups.map((group) => ({
+            tenant_id: tenantId,
+            campaign_id: createdCampaign.id,
+            cpf: `grupo:${group.telegram_chat_id}`,
+            nome: group.nome,
+            telefone: null,
+            hotzone: group.hotzone,
+            turno: "Grupo do Telegram",
+            telegram_chat_id: group.telegram_chat_id,
+            status_disparo: "erro_envio",
+            status_resposta: "aguardando",
+            resposta: null,
+            erro: "Envio ainda nao processado.",
+            enviado_em: null,
+            respondido_em: null,
+          }))
+        : importedRecipients.map((item) => {
+            const matchedWithChat = latestWithChat.get(item.cpf);
+            const matchedAny = latestAny.get(item.cpf);
+            const chosenMatch = matchedWithChat || matchedAny;
 
-      return {
-        tenant_id: tenantId,
-        campaign_id: createdCampaign.id,
-        cpf: item.cpf,
-        nome: item.nome,
-        telefone: item.telefone || chosenMatch?.telefone || null,
-        hotzone: item.hotzone || chosenMatch?.praca || null,
-        turno: item.turno || chosenMatch?.horario_label || null,
-        telegram_chat_id: matchedWithChat?.telegram_chat_id || null,
-        status_disparo: matchedWithChat?.telegram_chat_id ? "erro_envio" : "sem_chat_id",
-        status_resposta: "aguardando",
-        resposta: null,
-        erro: matchedWithChat?.telegram_chat_id ? "Envio ainda nao processado." : "CPF nao encontrado ou sem telegram_chat_id.",
-        enviado_em: null,
-        respondido_em: null,
-      };
-    });
+            return {
+              tenant_id: tenantId,
+              campaign_id: createdCampaign.id,
+              cpf: item.cpf,
+              nome: item.nome,
+              telefone: item.telefone || chosenMatch?.telefone || null,
+              hotzone: item.hotzone || chosenMatch?.praca || null,
+              turno: item.turno || chosenMatch?.horario_label || null,
+              telegram_chat_id: matchedWithChat?.telegram_chat_id || null,
+              status_disparo: matchedWithChat?.telegram_chat_id ? "erro_envio" : "sem_chat_id",
+              status_resposta: "aguardando",
+              resposta: null,
+              erro: matchedWithChat?.telegram_chat_id ? "Envio ainda nao processado." : "CPF nao encontrado ou sem telegram_chat_id.",
+              enviado_em: null,
+              respondido_em: null,
+            };
+          });
 
     const { data: insertedRecipients, error: recipientError } = await supabaseServer
       .from("telegram_campaign_recipients")
@@ -520,6 +693,7 @@ export async function createTelegramCampaignAction(
     let totalEnviado = 0;
     let totalErro = 0;
     const sourceRecipientByCpf = new Map(importedRecipients.map((item) => [item.cpf, item] as const));
+    const shouldIncludeButtons = modoDisparo !== "grupo_telegram";
 
     for (const recipient of insertedRecipients as InsertedRecipient[]) {
       if (!recipient.telegram_chat_id) {
@@ -528,7 +702,7 @@ export async function createTelegramCampaignAction(
 
       const sourceRecipient = sourceRecipientByCpf.get(recipient.cpf);
 
-      if (!sourceRecipient) {
+      if (modoDisparo !== "grupo_telegram" && !sourceRecipient) {
         totalErro += 1;
         await supabaseServer
           .from("telegram_campaign_recipients")
@@ -541,13 +715,18 @@ export async function createTelegramCampaignAction(
       }
 
       try {
-        const renderedMessage = buildTelegramMessage(mensagem, sourceRecipient);
+        const renderedMessage =
+          modoDisparo === "grupo_telegram"
+            ? mensagem
+            : buildTelegramMessage(mensagem, sourceRecipient as ImportedRecipient);
         const result = await sendTelegramMessage({
           token: telegramBotToken,
           chatId: recipient.telegram_chat_id,
           text: renderedMessage,
           recipientId: recipient.id,
           buttons,
+          media: campaignMedia,
+          includeButtons: shouldIncludeButtons,
         });
 
         if (result.ok) {
