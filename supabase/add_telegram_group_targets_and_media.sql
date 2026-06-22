@@ -8,6 +8,13 @@ alter table if exists public.telegram_campaigns
 add column if not exists nome_arquivo_imagem text;
 
 alter table if exists public.telegram_campaigns
+add column if not exists modo_disparo text not null default 'planilha';
+
+update public.telegram_campaigns
+set modo_disparo = 'planilha'
+where modo_disparo is null or trim(modo_disparo) = '';
+
+alter table if exists public.telegram_campaigns
 drop constraint if exists telegram_campaigns_modo_disparo_check;
 
 alter table if exists public.telegram_campaigns

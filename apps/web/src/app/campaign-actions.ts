@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { isRedirectError } from "next/dist/client/components/redirect-error";
 
 import * as XLSX from "xlsx";
 
@@ -118,7 +119,7 @@ function parseCampaignMode(value: FormDataEntryValue | null): CampaignMode {
     return value;
   }
 
-  return "planilha";
+  return "individual";
 }
 
 function parseSelectedGroupIds(formData: FormData) {
@@ -167,6 +168,12 @@ async function parseCampaignMedia(formData: FormData) {
 }
 
 function parseButtonList(formData: FormData) {
+  const useButtons = String(formData.get("usar_botoes") || "") === "true";
+
+  if (!useButtons) {
+    return [];
+  }
+
   const rawJson = String(formData.get("buttons_json") || "").trim();
   const fallback = [String(formData.get("botao_1") || ""), String(formData.get("botao_2") || "")];
   let parsedButtons: unknown = fallback;
@@ -613,8 +620,8 @@ export async function createTelegramCampaignAction(
         tenant_id: tenantId,
         nome_campanha: nomeCampanha,
         mensagem,
-        botao_1: buttons[0],
-        botao_2: buttons[1],
+        botao_1: buttons[0] || "",
+        botao_2: buttons[1] || "",
         botoes: buttons,
         modo_disparo: modoDisparo,
         target_group_names: selectedTelegramGroups.map((group) => group.nome),
@@ -693,7 +700,7 @@ export async function createTelegramCampaignAction(
     let totalEnviado = 0;
     let totalErro = 0;
     const sourceRecipientByCpf = new Map(importedRecipients.map((item) => [item.cpf, item] as const));
-    const shouldIncludeButtons = modoDisparo !== "grupo_telegram";
+    const shouldIncludeButtons = modoDisparo === "individual" && buttons.length > 0;
 
     for (const recipient of insertedRecipients as InsertedRecipient[]) {
       if (!recipient.telegram_chat_id) {
@@ -781,6 +788,10 @@ export async function createTelegramCampaignAction(
     revalidatePath("/campanhas-telegram");
     redirect(`/campanhas-telegram?campaign=${createdCampaign.id}`);
   } catch (error) {
+    if (isRedirectError(error)) {
+      throw error;
+    }
+
     return {
       status: "error",
       message: error instanceof Error ? error.message : "Nao foi possivel processar a campanha.",
