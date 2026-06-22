@@ -1685,6 +1685,12 @@ select:disabled {
   gap: 12px;
 }
 
+.campaign-group-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .campaign-recipient-card {
   display: grid;
   gap: 8px;
@@ -2291,6 +2297,7 @@ select:disabled {
   .notification-summary-grid,
   .campaign-intro-metrics,
   .campaign-helper-grid,
+  .campaign-group-grid,
   .campaign-recipient-grid,
   .notification-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2374,6 +2381,7 @@ select:disabled {
   .filters-grid,
   .access-grid,
   .campaign-helper-grid,
+  .campaign-group-grid,
   .campaign-recipient-grid,
   .hierarchy-form-grid,
   .user-form-grid {

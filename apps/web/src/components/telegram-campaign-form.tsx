@@ -7,6 +7,7 @@ import {
   createTelegramCampaignAction,
   type CampaignActionState,
 } from "@/app/campaign-actions";
+import { TELEGRAM_GROUP_TARGETS } from "@/lib/telegram-group-targets";
 
 type CampaignRecipientOption = {
   id: string;
@@ -19,7 +20,7 @@ type CampaignRecipientOption = {
   created_at: string;
 };
 
-type CampaignTargetMode = "planilha" | "individual" | "grupo";
+type CampaignTargetMode = "planilha" | "individual" | "grupo" | "grupo_telegram";
 type CampaignButton = {
   id: string;
   label: string;
@@ -55,6 +56,7 @@ export function TelegramCampaignForm({
   const [search, setSearch] = useState("");
   const [onlyWithChat, setOnlyWithChat] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
 
   const filteredRecipients = useMemo(() => {
     const normalizedQuery = search
@@ -156,28 +158,41 @@ export function TelegramCampaignForm({
     setSelectedIds([]);
   }
 
+  function toggleGroup(groupId: string) {
+    setSelectedGroupIds((currentIds) =>
+      currentIds.includes(groupId)
+        ? currentIds.filter((currentId) => currentId !== groupId)
+        : [...currentIds, groupId],
+    );
+  }
+
   return (
     <form action={formAction} className="hierarchy-form">
       <input type="hidden" name="target_mode" value={targetMode} />
       <input type="hidden" name="buttons_json" value={JSON.stringify(buttons.map((button) => button.label))} />
       <input type="hidden" name="selected_waitlist_ids" value={JSON.stringify(selectedIds)} />
+      <input type="hidden" name="selected_group_ids" value={JSON.stringify(selectedGroupIds)} />
 
       <section className="campaign-intro-panel">
         <div className="campaign-intro-copy">
           <span className="campaign-section-eyebrow">Campanhas Telegram</span>
           <h3>Monte, personalize e dispare com controle total</h3>
           <p>
-            Escolha o publico, escreva a mensagem com variaveis, configure quantos botoes quiser e acompanhe as respostas em tempo real.
+            Escolha o publico, envie texto ou imagem com mensagem, configure quantos botoes quiser e acompanhe as respostas em tempo real.
           </p>
         </div>
         <div className="campaign-intro-metrics">
           <div className="campaign-intro-metric">
-            <strong>3 modos</strong>
-            <span>Planilha, individual e grupo</span>
+            <strong>4 modos</strong>
+            <span>Planilha, individual, grupo e grupo Telegram</span>
           </div>
           <div className="campaign-intro-metric">
             <strong>2 a 6 botoes</strong>
             <span>Respostas dinamicas no Telegram</span>
+          </div>
+          <div className="campaign-intro-metric">
+            <strong>Foto opcional</strong>
+            <span>Junto com a mensagem, no individual ou em massa</span>
           </div>
         </div>
       </section>
@@ -229,6 +244,13 @@ export function TelegramCampaignForm({
                   >
                     Grupo da base
                   </button>
+                  <button
+                    type="button"
+                    className={targetMode === "grupo_telegram" ? "secondary-button campaign-mode-active" : "secondary-button"}
+                    onClick={() => setTargetMode("grupo_telegram")}
+                  >
+                    Grupo Telegram
+                  </button>
                 </div>
               </div>
             </div>
@@ -244,7 +266,11 @@ export function TelegramCampaignForm({
             <textarea
               className="textarea-input campaign-message-input"
               name="mensagem"
-              placeholder="Ola {nome}, vimos que voce esta agendado para a escala do {turno} na hotzone {hotzone}. Hoje tera jogo do Brasil. Voce confirma presenca?"
+              placeholder={
+                targetMode === "grupo_telegram"
+                  ? "Ola time, hoje teremos uma operacao especial. Ativem os aplicativos e acompanhem as orientacoes abaixo."
+                  : "Ola {nome}, vimos que voce esta agendado para a escala do {turno} na hotzone {hotzone}. Hoje tera jogo do Brasil. Voce confirma presenca?"
+              }
               rows={7}
               required
             />
@@ -253,46 +279,72 @@ export function TelegramCampaignForm({
           <div className="campaign-card">
             <div className="campaign-card-header">
               <div>
-                <span className="campaign-section-eyebrow">Botoes</span>
-                <h3>Opcoes de resposta</h3>
+                <span className="campaign-section-eyebrow">Midia</span>
+                <h3>Imagem opcional</h3>
+                <p className="campaign-card-copy">
+                  Se quiser, envie foto junto com a mensagem. Quando o texto for grande, o sistema manda a foto primeiro e o texto depois.
+                </p>
               </div>
-              <button type="button" className="secondary-button" onClick={addButton} disabled={buttons.length >= 6}>
-                Adicionar botao
-              </button>
             </div>
-
-            <div className="campaign-buttons-grid">
-              {buttons.map((button, index) => {
-                const normalizedLabel = button.label.trim() || `Botao ${index + 1}`;
-
-                return (
-                  <div key={button.id} className="campaign-button-editor-row">
-                    <div className="campaign-button-badge">{index + 1}</div>
-                    <div className="campaign-button-editor">
-                      <input
-                        className="text-input campaign-button-input"
-                        type="text"
-                        value={button.label}
-                        onChange={(event) => updateButton(index, event.target.value)}
-                        placeholder={`Botao ${index + 1}`}
-                        required
-                      />
-                      <button
-                        type="button"
-                        className="secondary-button campaign-button-remove"
-                        onClick={() => removeButton(index)}
-                        disabled={buttons.length <= 2}
-                      >
-                        Remover
-                      </button>
-                    </div>
-                    <div className="campaign-button-preview-chip">{normalizedLabel}</div>
-                  </div>
-                );
-              })}
-            </div>
+            <input className="text-input" type="file" name="imagem_campanha" accept="image/png,image/jpeg,image/webp" />
           </div>
 
+          {targetMode !== "grupo_telegram" ? (
+            <div className="campaign-card">
+              <div className="campaign-card-header">
+                <div>
+                  <span className="campaign-section-eyebrow">Botoes</span>
+                  <h3>Opcoes de resposta</h3>
+                </div>
+                <button type="button" className="secondary-button" onClick={addButton} disabled={buttons.length >= 6}>
+                  Adicionar botao
+                </button>
+              </div>
+
+              <div className="campaign-buttons-grid">
+                {buttons.map((button, index) => {
+                  const normalizedLabel = button.label.trim() || `Botao ${index + 1}`;
+
+                  return (
+                    <div key={button.id} className="campaign-button-editor-row">
+                      <div className="campaign-button-badge">{index + 1}</div>
+                      <div className="campaign-button-editor">
+                        <input
+                          className="text-input campaign-button-input"
+                          type="text"
+                          value={button.label}
+                          onChange={(event) => updateButton(index, event.target.value)}
+                          placeholder={`Botao ${index + 1}`}
+                          required
+                        />
+                        <button
+                          type="button"
+                          className="secondary-button campaign-button-remove"
+                          onClick={() => removeButton(index)}
+                          disabled={buttons.length <= 2}
+                        >
+                          Remover
+                        </button>
+                      </div>
+                      <div className="campaign-button-preview-chip">{normalizedLabel}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="campaign-card">
+              <div className="campaign-card-header">
+                <div>
+                  <span className="campaign-section-eyebrow">Botoes</span>
+                  <h3>Campanha em grupo</h3>
+                </div>
+              </div>
+              <p className="campaign-card-copy">
+                No modo `Grupo Telegram`, o disparo funciona como comunicacao do grupo. A mensagem pode ir com foto, mas sem botoes de resposta individuais.
+              </p>
+            </div>
+          )}
           {targetMode === "planilha" ? (
             <div className="campaign-card">
               <div className="campaign-card-header">
@@ -326,12 +378,15 @@ export function TelegramCampaignForm({
               <code>{"{hotzone}"}</code>
               <code>{"{turno}"}</code>
             </div>
+            {targetMode === "grupo_telegram" ? (
+              <p className="campaign-card-copy">No grupo Telegram, o texto e enviado do jeito que voce escrever, sem personalizacao por pessoa.</p>
+            ) : null}
           </div>
 
           <div className="access-panel">
             <h3>Regras do disparo</h3>
             <p>O envio usa apenas `telegram_chat_id`. Sem chat valido, o sistema registra `sem_chat_id`.</p>
-            <p>Voce pode disparar por planilha, para uma pessoa individualmente ou montar um grupo da base.</p>
+            <p>Voce pode disparar por planilha, para uma pessoa individualmente, montar um grupo da base ou enviar direto para grupos oficiais do Telegram.</p>
           </div>
 
           <div className="access-panel campaign-tips-panel">
@@ -342,7 +397,43 @@ export function TelegramCampaignForm({
         </div>
       </section>
 
-      {targetMode !== "planilha" ? (
+      {targetMode === "grupo_telegram" ? (
+        <section className="campaign-card">
+          <div className="campaign-card-header">
+            <div>
+              <span className="campaign-section-eyebrow">Grupos oficiais</span>
+              <h3>Escolha para quais grupos enviar</h3>
+              <p className="campaign-card-copy">
+                Selecione um ou mais grupos fixos da operacao. O disparo vai usar o `chat_id` do proprio grupo.
+              </p>
+            </div>
+          </div>
+
+          <div className="campaign-group-grid">
+            {TELEGRAM_GROUP_TARGETS.map((group) => {
+              const selected = selectedGroupIds.includes(group.id);
+
+              return (
+                <button
+                  key={group.id}
+                  type="button"
+                  className={selected ? "campaign-recipient-card campaign-recipient-card-active" : "campaign-recipient-card"}
+                  onClick={() => toggleGroup(group.id)}
+                >
+                  <div className="campaign-recipient-top">
+                    <strong>{group.nome}</strong>
+                    <span className="day-chip day-chip-info">Grupo oficial</span>
+                  </div>
+                  <p>Hotzone: {group.hotzone}</p>
+                  <p>Chat ID: {group.telegram_chat_id}</p>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+
+      {targetMode !== "planilha" && targetMode !== "grupo_telegram" ? (
         <section className="campaign-card">
           <div className="campaign-card-header">
             <div>

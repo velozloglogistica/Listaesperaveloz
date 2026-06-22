@@ -16,7 +16,10 @@ type TelegramCampaign = {
   botao_1: string;
   botao_2: string;
   botoes: string[] | null;
-  modo_disparo: "planilha" | "individual" | "grupo" | null;
+  modo_disparo: "planilha" | "individual" | "grupo" | "grupo_telegram" | null;
+  target_group_names: string[] | null;
+  tem_imagem: boolean | null;
+  nome_arquivo_imagem: string | null;
   total_planilha: number;
   total_com_chat_id: number;
   total_sem_chat_id: number;
@@ -88,6 +91,10 @@ function getModeLabel(mode: TelegramCampaign["modo_disparo"]) {
 
   if (mode === "grupo") {
     return "Grupo da base";
+  }
+
+  if (mode === "grupo_telegram") {
+    return "Grupo Telegram";
   }
 
   return "Planilha";
@@ -180,7 +187,10 @@ export default async function TelegramCampaignsPage({
     label: buttonLabel,
     total: recipients.filter((item) => item.resposta === buttonLabel).length,
   }));
-  const pendingResponses = recipients.filter((item) => item.status_resposta === "aguardando").length;
+  const pendingResponses =
+    selectedCampaign?.modo_disparo === "grupo_telegram"
+      ? 0
+      : recipients.filter((item) => item.status_resposta === "aguardando").length;
 
   return (
     <AppShell
@@ -193,7 +203,7 @@ export default async function TelegramCampaignsPage({
         <div className="panel-header">
           <div>
             <h2>Nova campanha</h2>
-            <p>Dispare por planilha, escolha uma pessoa individualmente ou monte grupos completos da base.</p>
+            <p>Dispare por planilha, individualmente, por grupo da base ou direto nos grupos oficiais do Telegram com foto opcional.</p>
           </div>
         </div>
         <TelegramCampaignForm baseRecipients={recipientOptions} />
@@ -251,9 +261,10 @@ export default async function TelegramCampaignsPage({
             <SummaryCard title="Erros de envio" value={selectedCampaign.total_erro} />
             <SummaryCard title="Ainda sem resposta" value={pendingResponses} />
             <SummaryCard title="Modo da campanha" value={getModeLabel(selectedCampaign.modo_disparo)} />
+            <SummaryCard title="Imagem anexada" value={selectedCampaign.tem_imagem ? "Sim" : "Nao"} />
           </section>
 
-          {buttonResponseCards.length > 0 ? (
+          {buttonResponseCards.length > 0 && selectedCampaign.modo_disparo !== "grupo_telegram" ? (
             <section className="summary-grid">
               {buttonResponseCards.map((buttonCard) => (
                 <SummaryCard
@@ -276,11 +287,25 @@ export default async function TelegramCampaignsPage({
               <strong>Mensagem enviada</strong>
               <p>{selectedCampaign.mensagem}</p>
               <span className="day-chip day-chip-info">{getModeLabel(selectedCampaign.modo_disparo)}</span>
-              <div className="campaign-variable-list">
-                {campaignButtons.map((buttonLabel) => (
-                  <code key={buttonLabel}>{buttonLabel}</code>
-                ))}
-              </div>
+              {selectedCampaign.tem_imagem ? (
+                <span className="day-chip day-chip-success">
+                  Imagem anexada{selectedCampaign.nome_arquivo_imagem ? `: ${selectedCampaign.nome_arquivo_imagem}` : ""}
+                </span>
+              ) : null}
+              {selectedCampaign.target_group_names && selectedCampaign.target_group_names.length > 0 ? (
+                <div className="campaign-variable-list">
+                  {selectedCampaign.target_group_names.map((groupName) => (
+                    <code key={groupName}>{groupName}</code>
+                  ))}
+                </div>
+              ) : null}
+              {selectedCampaign.modo_disparo !== "grupo_telegram" ? (
+                <div className="campaign-variable-list">
+                  {campaignButtons.map((buttonLabel) => (
+                    <code key={buttonLabel}>{buttonLabel}</code>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </section>
 
