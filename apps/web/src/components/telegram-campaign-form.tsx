@@ -251,7 +251,9 @@ export function TelegramCampaignForm({
                 <span className="campaign-section-eyebrow">Mensagem</span>
                 <h3>Conteudo do disparo</h3>
                 {targetMode === "individual" ? (
-                  <p className="campaign-card-copy">Voce pode usar `{nome}`, `{telefone}`, `{cpf}`, `{hotzone}` e `{turno}`.</p>
+                  <p className="campaign-card-copy">
+                    Voce pode usar {"{nome}"}, {"{telefone}"}, {"{cpf}"}, {"{hotzone}"} e {"{turno}"}.
+                  </p>
                 ) : (
                   <p className="campaign-card-copy">No grupo Telegram, a mensagem vai exatamente como voce escrever.</p>
                 )}
