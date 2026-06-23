@@ -1,29 +1,31 @@
 "use client";
 
-import { useActionState, useMemo, useRef, useState } from "react";
+import { useActionState, useRef, useState, type FormEvent } from "react";
 import { useFormStatus } from "react-dom";
 
-import {
-  createTelegramCampaignAction,
-  type CampaignActionState,
-} from "@/app/campaign-actions";
-import { TELEGRAM_GROUP_TARGETS } from "@/lib/telegram-group-targets";
+import { createTelegramCampaignAction, type CampaignActionState } from "@/app/campaign-actions";
 
-type CampaignRecipientOption = {
-  id: string;
-  cpf: string;
-  nome: string;
-  telefone: string | null;
-  hotzone: string | null;
-  turno: string | null;
-  telegram_chat_id: number | null;
-  created_at: string;
-};
-
-type CampaignTargetMode = "individual" | "grupo_telegram";
 type CampaignButton = {
   id: string;
   label: string;
+};
+
+type SpreadsheetPreviewRow = {
+  cpf: string;
+  nome: string;
+  status: "com_chat_id" | "sem_chat_id" | "cpf_nao_encontrado";
+  nome_base: string | null;
+  hotzone: string | null;
+  turno: string | null;
+};
+
+type SpreadsheetPreview = {
+  totalPlanilha: number;
+  totalComChatId: number;
+  totalSemChatId: number;
+  totalCpfNaoEncontrado: number;
+  totalEncontradoSemChatId: number;
+  rows: SpreadsheetPreviewRow[];
 };
 
 const initialState: CampaignActionState = {
@@ -31,23 +33,31 @@ const initialState: CampaignActionState = {
   message: "",
 };
 
-function SubmitButton() {
+function SubmitButton({ disabled }: { disabled: boolean }) {
   const { pending } = useFormStatus();
 
   return (
-    <button type="submit" className="primary-button" disabled={pending}>
-      {pending ? "Disparando campanha..." : "Criar campanha e disparar"}
+    <button type="submit" className="primary-button" disabled={pending || disabled}>
+      {pending ? "Disparando campanha..." : "Confirmar e disparar"}
     </button>
   );
 }
 
-export function TelegramCampaignForm({
-  baseRecipients,
-}: {
-  baseRecipients: CampaignRecipientOption[];
-}) {
+function getPreviewStatusLabel(status: SpreadsheetPreviewRow["status"]) {
+  if (status === "com_chat_id") {
+    return "Com chat_id";
+  }
+
+  if (status === "sem_chat_id") {
+    return "Encontrado sem chat_id";
+  }
+
+  return "CPF nao encontrado";
+}
+
+export function TelegramCampaignForm() {
   const [state, formAction] = useActionState(createTelegramCampaignAction, initialState);
-  const [targetMode, setTargetMode] = useState<CampaignTargetMode>("individual");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const buttonIdRef = useRef(2);
   const [buttons, setButtons] = useState<CampaignButton[]>([
     { id: "button-1", label: "Sim" },
@@ -55,48 +65,14 @@ export function TelegramCampaignForm({
   ]);
   const [useButtons, setUseButtons] = useState(false);
   const [useImage, setUseImage] = useState(false);
-  const [search, setSearch] = useState("");
-  const [onlyWithChat, setOnlyWithChat] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
+  const [preview, setPreview] = useState<SpreadsheetPreview | null>(null);
+  const [previewError, setPreviewError] = useState("");
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  const filteredRecipients = useMemo(() => {
-    const normalizedQuery = search
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .trim();
-
-    return baseRecipients.filter((recipient) => {
-      if (onlyWithChat && !recipient.telegram_chat_id) {
-        return false;
-      }
-
-      if (!normalizedQuery) {
-        return true;
-      }
-
-      const haystack = [
-        recipient.nome,
-        recipient.cpf,
-        recipient.telefone || "",
-        recipient.hotzone || "",
-        recipient.turno || "",
-      ]
-        .join(" ")
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLowerCase();
-
-      return haystack.includes(normalizedQuery);
-    });
-  }, [baseRecipients, onlyWithChat, search]);
-
-  const selectedRecipients = useMemo(
-    () => baseRecipients.filter((recipient) => selectedIds.includes(recipient.id)),
-    [baseRecipients, selectedIds],
-  );
-  const selectedRecipient = selectedRecipients[0] || null;
+  function resetPreview() {
+    setPreview(null);
+    setPreviewError("");
+  }
 
   function updateButton(index: number, value: string) {
     setButtons((currentButtons) =>
@@ -132,54 +108,88 @@ export function TelegramCampaignForm({
     );
   }
 
-  function toggleRecipient(recipientId: string) {
-    setSelectedIds((currentIds) => {
-      return currentIds[0] === recipientId ? [] : [recipientId];
-    });
+  async function analyzeSpreadsheet() {
+    const file = fileInputRef.current?.files?.[0];
+
+    if (!file) {
+      setPreview(null);
+      setPreviewError("Selecione a planilha antes de analisar.");
+      return;
+    }
+
+    setIsAnalyzing(true);
+    setPreviewError("");
+
+    try {
+      const formData = new FormData();
+      formData.append("planilha", file);
+
+      const response = await fetch("/api/telegram-campaigns/preview", {
+        method: "POST",
+        body: formData,
+      });
+
+      const payload = (await response.json()) as SpreadsheetPreview | { error?: string };
+
+      if (!response.ok) {
+        setPreview(null);
+        setPreviewError(payload && "error" in payload ? payload.error || "Nao foi possivel analisar a planilha." : "Nao foi possivel analisar a planilha.");
+        return;
+      }
+
+      setPreview(payload as SpreadsheetPreview);
+    } catch {
+      setPreview(null);
+      setPreviewError("Nao foi possivel analisar a planilha agora. Tente novamente.");
+    } finally {
+      setIsAnalyzing(false);
+    }
   }
 
-  function clearSelection() {
-    setSelectedIds([]);
-  }
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    if (!preview) {
+      event.preventDefault();
+      setPreviewError("Analise a planilha antes de confirmar o disparo.");
+      return;
+    }
 
-  function toggleGroup(groupId: string) {
-    setSelectedGroupIds((currentIds) =>
-      currentIds.includes(groupId)
-        ? currentIds.filter((currentId) => currentId !== groupId)
-        : [...currentIds, groupId],
+    const shouldProceed = window.confirm(
+      `Deseja realmente disparar esta campanha?\n\nAchados com chat_id: ${preview.totalComChatId}\nSem chat_id: ${preview.totalEncontradoSemChatId}\nCPF nao encontrado: ${preview.totalCpfNaoEncontrado}`,
     );
+
+    if (!shouldProceed) {
+      event.preventDefault();
+    }
   }
 
   return (
-    <form action={formAction} className="hierarchy-form">
-      <input type="hidden" name="target_mode" value={targetMode} />
+    <form action={formAction} className="hierarchy-form" onSubmit={handleSubmit}>
+      <input type="hidden" name="target_mode" value="planilha" />
       <input
         type="hidden"
         name="buttons_json"
         value={JSON.stringify(useButtons ? buttons.map((button) => button.label) : [])}
       />
       <input type="hidden" name="usar_botoes" value={useButtons ? "true" : "false"} />
-      <input type="hidden" name="selected_waitlist_ids" value={JSON.stringify(selectedIds)} />
-      <input type="hidden" name="selected_group_ids" value={JSON.stringify(selectedGroupIds)} />
 
       <section className="campaign-intro-panel">
         <div className="campaign-intro-copy">
           <span className="campaign-section-eyebrow">Campanhas Telegram</span>
-          <h3>Disparo simples e direto</h3>
-          <p>Selecione uma pessoa ou um grupo Telegram, escreva a mensagem e escolha se quer usar imagem e botoes.</p>
+          <h3>Planilha primeiro, disparo depois</h3>
+          <p>Suba a planilha com nome e CPF, veja quantos achamos na base pelo CPF e confirme o envio so depois da analise.</p>
         </div>
         <div className="campaign-intro-metrics">
           <div className="campaign-intro-metric">
-            <strong>2 modos</strong>
-            <span>Individual e Grupo Telegram</span>
+            <strong>Nome + CPF</strong>
+            <span>Lemos somente o nome e o CPF da planilha</span>
           </div>
           <div className="campaign-intro-metric">
-            <strong>Visual clean</strong>
-            <span>Mostra so o que voce decidir usar</span>
+            <strong>Preview antes</strong>
+            <span>Mostra achados, sem chat_id e nao encontrados</span>
           </div>
           <div className="campaign-intro-metric">
-            <strong>Foto opcional</strong>
-            <span>Com mensagem curta ou longa</span>
+            <strong>Disparo seguro</strong>
+            <span>So envia depois da sua confirmacao</span>
           </div>
         </div>
       </section>
@@ -195,33 +205,20 @@ export function TelegramCampaignForm({
                 placeholder="Nome da campanha"
                 required
               />
-              <div className="campaign-mode-toolbar">
-                <span className="campaign-section-eyebrow">Destino</span>
-                <div className="campaign-mode-toggle">
-                  <button
-                    type="button"
-                    className={targetMode === "individual" ? "secondary-button campaign-mode-active" : "secondary-button"}
-                    onClick={() => {
-                      setTargetMode("individual");
-                      setSelectedGroupIds([]);
-                    }}
-                  >
-                    Individual
-                  </button>
-                  <button
-                    type="button"
-                    className={targetMode === "grupo_telegram" ? "secondary-button campaign-mode-active" : "secondary-button"}
-                    onClick={() => {
-                      setTargetMode("grupo_telegram");
-                      setSelectedIds([]);
-                      setUseButtons(false);
-                    }}
-                  >
-                    Grupo Telegram
-                  </button>
-                </div>
-              </div>
+              <input
+                ref={fileInputRef}
+                className="text-input"
+                type="file"
+                name="planilha"
+                accept=".xlsx,.xls,.csv"
+                required
+                onChange={resetPreview}
+              />
             </div>
+
+            <p className="campaign-card-copy">
+              A planilha pode vir com colunas como {"Nome do entregador parceiro"} e {"Numero da identidade"}. O sistema usa apenas nome e CPF para cruzar com a base.
+            </p>
 
             <div className="campaign-toggle-row">
               <label className="checkbox-card">
@@ -232,16 +229,17 @@ export function TelegramCampaignForm({
                 />
                 <span>Adicionar imagem</span>
               </label>
-              {targetMode === "individual" ? (
-                <label className="checkbox-card">
-                  <input
-                    type="checkbox"
-                    checked={useButtons}
-                    onChange={(event) => setUseButtons(event.target.checked)}
-                  />
-                  <span>Usar botoes</span>
-                </label>
-              ) : null}
+              <label className="checkbox-card">
+                <input
+                  type="checkbox"
+                  checked={useButtons}
+                  onChange={(event) => setUseButtons(event.target.checked)}
+                />
+                <span>Usar botoes</span>
+              </label>
+              <button type="button" className="secondary-button" onClick={analyzeSpreadsheet} disabled={isAnalyzing}>
+                {isAnalyzing ? "Analisando planilha..." : "Analisar planilha"}
+              </button>
             </div>
           </div>
 
@@ -250,23 +248,15 @@ export function TelegramCampaignForm({
               <div>
                 <span className="campaign-section-eyebrow">Mensagem</span>
                 <h3>Conteudo do disparo</h3>
-                {targetMode === "individual" ? (
-                  <p className="campaign-card-copy">
-                    Voce pode usar {"{nome}"}, {"{telefone}"}, {"{cpf}"}, {"{hotzone}"} e {"{turno}"}.
-                  </p>
-                ) : (
-                  <p className="campaign-card-copy">No grupo Telegram, a mensagem vai exatamente como voce escrever.</p>
-                )}
+                <p className="campaign-card-copy">
+                  Voce pode usar {"{nome}"}, {"{telefone}"}, {"{cpf}"}, {"{hotzone}"} e {"{turno}"}.
+                </p>
               </div>
             </div>
             <textarea
               className="textarea-input campaign-message-input"
               name="mensagem"
-              placeholder={
-                targetMode === "grupo_telegram"
-                  ? "Ola time, hoje teremos uma operacao especial. Ativem os aplicativos e acompanhem as orientacoes abaixo."
-                  : "Ola {nome}, vimos que voce esta agendado para a escala do {turno} na hotzone {hotzone}."
-              }
+              placeholder="Ola {nome}, vimos que voce esta agendado para a escala do {turno} na hotzone {hotzone}."
               rows={7}
               required
             />
@@ -285,7 +275,7 @@ export function TelegramCampaignForm({
             </div>
           ) : null}
 
-          {useButtons && targetMode === "individual" ? (
+          {useButtons ? (
             <div className="campaign-card">
               <div className="campaign-card-header">
                 <div>
@@ -332,135 +322,73 @@ export function TelegramCampaignForm({
         </div>
       </section>
 
-      {targetMode === "grupo_telegram" ? (
-        <section className="campaign-card">
-          <div className="campaign-card-header">
-            <div>
-              <span className="campaign-section-eyebrow">Grupos oficiais</span>
-              <h3>Escolha os grupos</h3>
-              <p className="campaign-card-copy">Selecione um ou mais grupos oficiais para receber o disparo.</p>
+      {preview ? (
+        <>
+          <section className="summary-grid">
+            <div className="summary-card">
+              <h3>Total na planilha</h3>
+              <strong>{preview.totalPlanilha}</strong>
             </div>
-          </div>
-
-          <div className="campaign-group-grid">
-            {TELEGRAM_GROUP_TARGETS.map((group) => {
-              const selected = selectedGroupIds.includes(group.id);
-
-              return (
-                <button
-                  key={group.id}
-                  type="button"
-                  className={selected ? "campaign-recipient-card campaign-recipient-card-active" : "campaign-recipient-card"}
-                  onClick={() => toggleGroup(group.id)}
-                >
-                  <div className="campaign-recipient-top">
-                    <strong>{group.nome}</strong>
-                    <span className="day-chip day-chip-info">Grupo oficial</span>
-                  </div>
-                  <p>Hotzone: {group.hotzone}</p>
-                  <p>Chat ID: {group.telegram_chat_id}</p>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-      ) : null}
-
-      {targetMode === "individual" ? (
-        <section className="campaign-card">
-          <div className="campaign-card-header">
-            <div>
-              <span className="campaign-section-eyebrow">Destinatario</span>
-              <h3>Escolha uma pessoa</h3>
-              <p className="campaign-card-copy">Busque por nome, CPF, telefone, hotzone ou turno.</p>
+            <div className="summary-card">
+              <h3>Com chat_id</h3>
+              <strong>{preview.totalComChatId}</strong>
             </div>
-            {selectedRecipient ? (
-              <div className="campaign-selection-actions">
-                <div className="campaign-selection-summary">
-                  <strong>1</strong>
-                  <span>selecionado</span>
-                </div>
+            <div className="summary-card">
+              <h3>Encontrados sem chat_id</h3>
+              <strong>{preview.totalEncontradoSemChatId}</strong>
+            </div>
+            <div className="summary-card">
+              <h3>CPF nao encontrado</h3>
+              <strong>{preview.totalCpfNaoEncontrado}</strong>
+            </div>
+          </section>
+
+          <section className="campaign-card">
+            <div className="campaign-card-header">
+              <div>
+                <span className="campaign-section-eyebrow">Pre-analise</span>
+                <h3>Resultado do cruzamento por CPF</h3>
+                <p className="campaign-card-copy">So os registros com chat_id vao ser disparados. Os demais ficam salvos no relatorio da campanha.</p>
               </div>
-            ) : (
-              <div className="campaign-selection-actions">
-                <div className="campaign-selection-summary">
-                  <strong>0</strong>
-                  <span>selecionado</span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="campaign-search-toolbar campaign-search-toolbar-clean">
-            <input
-              className="text-input courier-search-input"
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Buscar pessoa por nome, CPF, telefone, hotzone ou turno"
-            />
-            <label className="checkbox-card">
-              <input
-                type="checkbox"
-                checked={onlyWithChat}
-                onChange={(event) => setOnlyWithChat(event.target.checked)}
-              />
-              <span>Somente com chat_id</span>
-            </label>
-            {selectedRecipient ? (
-              <button type="button" className="secondary-button" onClick={clearSelection}>
-                Limpar
-              </button>
-            ) : null}
-          </div>
-
-          {selectedRecipient ? (
-            <div className="campaign-recipient-selected">
-              <strong>{selectedRecipient.nome}</strong>
-              <span>
-                {selectedRecipient.cpf} | {selectedRecipient.hotzone || "-"} | {selectedRecipient.turno || "-"}
-              </span>
             </div>
-          ) : null}
 
-          <div className="campaign-recipient-grid">
-            {filteredRecipients.map((recipient) => {
-              const selected = selectedIds.includes(recipient.id);
-
-              return (
-                <button
-                  key={recipient.id}
-                  type="button"
-                  className={selected ? "campaign-recipient-card campaign-recipient-card-active" : "campaign-recipient-card"}
-                  onClick={() => toggleRecipient(recipient.id)}
-                >
-                  <div className="campaign-recipient-top">
-                    <strong>{recipient.nome}</strong>
-                    <span className={recipient.telegram_chat_id ? "day-chip day-chip-success" : "day-chip day-chip-muted"}>
-                      {recipient.telegram_chat_id ? "Com chat_id" : "Sem chat_id"}
-                    </span>
-                  </div>
-                  <p>CPF: {recipient.cpf}</p>
-                  <p>Telefone: {recipient.telefone || "-"}</p>
-                  <p>Hotzone: {recipient.hotzone || "-"}</p>
-                  <p>Turno: {recipient.turno || "-"}</p>
-                </button>
-              );
-            })}
-          </div>
-
-          {filteredRecipients.length === 0 ? (
-            <div className="empty-state">
-              <h2>Nenhum destinatario encontrado</h2>
-              <p>Ajuste a busca ou remova o filtro de `chat_id`.</p>
+            <div className="table-wrapper">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Nome da planilha</th>
+                    <th>CPF</th>
+                    <th>Status</th>
+                    <th>Nome na base</th>
+                    <th>Hotzone</th>
+                    <th>Turno</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.rows.map((row) => (
+                    <tr key={row.cpf}>
+                      <td>{row.nome}</td>
+                      <td>{row.cpf}</td>
+                      <td>{getPreviewStatusLabel(row.status)}</td>
+                      <td>{row.nome_base || "-"}</td>
+                      <td>{row.hotzone || "-"}</td>
+                      <td>{row.turno || "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          ) : null}
-        </section>
+          </section>
+        </>
       ) : null}
 
       <div className="manual-form-actions">
-        <SubmitButton />
+        <SubmitButton disabled={!preview} />
       </div>
+
+      {previewError ? (
+        <p className="manual-form-feedback manual-form-feedback-error">{previewError}</p>
+      ) : null}
 
       {state.message ? (
         <p className="manual-form-feedback manual-form-feedback-error">{state.message}</p>
