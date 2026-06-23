@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 
 import { createTenantWithOwnerAction } from "@/app/platform-actions";
-import { MODULE_CATALOG } from "@/lib/access-config";
+import { CORE_COMPANY_MODULE_SLUGS, MODULE_CATALOG } from "@/lib/access-config";
 
 const initialState = {
   status: "idle" as const,
@@ -74,7 +74,7 @@ export function TenantForm() {
                 type="checkbox"
                 name="module_slugs"
                 value={module.slug}
-                defaultChecked={["dashboard", "waitlist", "users", "hierarchies"].includes(module.slug)}
+                defaultChecked={(CORE_COMPANY_MODULE_SLUGS as readonly string[]).includes(module.slug)}
               />
               <span>
                 <strong>{module.name}</strong>

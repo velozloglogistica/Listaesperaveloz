@@ -10,6 +10,11 @@ export const MODULE_CATALOG = [
     description: "Gerencia fila operacional, filtros, cards e cadastro manual.",
   },
   {
+    slug: "telegram_campaigns",
+    name: "Campanhas Telegram",
+    description: "Dispara campanhas operacionais pelo Telegram com mensagem, imagem e botoes opcionais.",
+  },
+  {
     slug: "users",
     name: "Usuarios",
     description: "Controla acessos, cadastro de logins e equipe da empresa.",
@@ -64,7 +69,13 @@ export const PERMISSION_CATALOG = [
   },
 ] as const;
 
-export const CORE_COMPANY_MODULE_SLUGS = ["dashboard", "waitlist", "users", "hierarchies"] as const;
+export const CORE_COMPANY_MODULE_SLUGS = [
+  "dashboard",
+  "waitlist",
+  "telegram_campaigns",
+  "users",
+  "hierarchies",
+] as const;
 
 export type ModuleSlug = (typeof MODULE_CATALOG)[number]["slug"];
 export type PermissionKey = (typeof PERMISSION_CATALOG)[number]["key"];

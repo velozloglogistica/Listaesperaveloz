@@ -72,7 +72,7 @@ export function AppShell({ currentPath, title, description, user, children }: Ap
       label: "Campanhas Telegram",
       shortLabel: "T",
       group: "Operacao",
-      visible: canAccessModule(user, "waitlist"),
+      visible: canAccessModule(user, "telegram_campaigns"),
     },
     {
       href: "/informacoes-bag",

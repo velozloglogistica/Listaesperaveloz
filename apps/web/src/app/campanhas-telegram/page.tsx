@@ -3,7 +3,7 @@ import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { SummaryCard } from "@/components/summary-card";
 import { TelegramCampaignForm } from "@/components/telegram-campaign-form";
-import { requireWaitlistAccess } from "@/lib/auth";
+import { requireTelegramCampaignAccess } from "@/lib/auth";
 import { supabaseServer } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
@@ -173,7 +173,7 @@ export default async function TelegramCampaignsPage({
 }) {
   const resolvedParams = (await searchParams) || {};
   const selectedCampaignId = firstParam(resolvedParams.campaign);
-  const currentUser = await requireWaitlistAccess();
+  const currentUser = await requireTelegramCampaignAccess();
   const tenantId = currentUser.current_tenant.id;
   const campaigns = await getCampaigns(tenantId);
   const recipientOptions = await getCampaignRecipientOptions(tenantId);

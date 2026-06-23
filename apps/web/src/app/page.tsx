@@ -90,7 +90,7 @@ export default async function Home() {
               <p>Gerencie solicitacoes, filtros, cards operacionais e cadastro manual.</p>
             </Link>
           ) : null}
-          {canAccessModule(currentUser, "waitlist") ? (
+          {canAccessModule(currentUser, "telegram_campaigns") ? (
             <Link href="/campanhas-telegram" className="module-card">
               <strong>Campanhas Telegram</strong>
               <p>Suba planilhas, dispare mensagens automaticas e acompanhe respostas em tempo real.</p>
