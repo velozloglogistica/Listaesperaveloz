@@ -4,10 +4,18 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { isRedirectError } from "next/dist/client/components/redirect-error";
 
-import * as XLSX from "xlsx";
-
 import { requireTelegramCampaignAccess } from "@/lib/auth";
 import { supabaseServer } from "@/lib/supabase-server";
+import {
+  buildTelegramMessage,
+  chunkArray,
+  getWaitlistMatches,
+  parseSpreadsheet,
+  sanitizeDigits,
+  normalizeCell,
+  type ImportedRecipient,
+  type WaitlistMatch,
+} from "@/lib/telegram-campaigns";
 import { TELEGRAM_GROUP_TARGETS } from "@/lib/telegram-group-targets";
 
 export type CampaignActionState = {
@@ -16,25 +24,6 @@ export type CampaignActionState = {
 };
 
 type CampaignMode = "planilha" | "individual" | "grupo" | "grupo_telegram";
-
-type ImportedRecipient = {
-  cpf: string;
-  nome: string;
-  telefone: string;
-  hotzone: string;
-  turno: string;
-};
-
-type WaitlistMatch = {
-  id: string;
-  cpf: string;
-  nome: string | null;
-  telefone: string | null;
-  praca: string | null;
-  horario_label: string | null;
-  telegram_chat_id: number | null;
-  created_at: string;
-};
 
 type InsertedRecipient = {
   id: string;
@@ -57,69 +46,12 @@ const initialState: CampaignActionState = {
   message: "",
 };
 
-function sanitizeDigits(value: string) {
-  return value.replace(/\D/g, "");
-}
-
-function normalizeHeader(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-}
-
-function normalizeCell(value: unknown) {
-  return String(value ?? "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function resolveSpreadsheetValue(row: Record<string, unknown>, candidates: string[]) {
-  const normalizedEntries = Object.entries(row).map(([key, value]) => [normalizeHeader(key), value] as const);
-
-  for (const candidate of candidates) {
-    const entry = normalizedEntries.find(([key]) => key === candidate);
-    if (entry) {
-      return normalizeCell(entry[1]);
-    }
-  }
-
-  return "";
-}
-
-function buildTelegramMessage(template: string, recipient: ImportedRecipient) {
-  const variables: Record<string, string> = {
-    nome: recipient.nome,
-    telefone: recipient.telefone,
-    cpf: recipient.cpf,
-    hotzone: recipient.hotzone,
-    turno: recipient.turno,
-  };
-
-  return template.replace(/\{(nome|telefone|cpf|hotzone|turno)\}/gi, (_, key: string) => {
-    return variables[key.toLowerCase()] || "";
-  });
-}
-
-function chunkArray<T>(items: T[], size: number) {
-  const chunks: T[][] = [];
-
-  for (let index = 0; index < items.length; index += size) {
-    chunks.push(items.slice(index, index + size));
-  }
-
-  return chunks;
-}
-
 function parseCampaignMode(value: FormDataEntryValue | null): CampaignMode {
   if (value === "individual" || value === "grupo" || value === "planilha" || value === "grupo_telegram") {
     return value;
   }
 
-  return "individual";
+  return "planilha";
 }
 
 function parseSelectedGroupIds(formData: FormData) {
@@ -227,105 +159,6 @@ function parseSelectedWaitlistIds(formData: FormData) {
   } catch {
     throw new Error("Nao foi possivel ler a selecao manual de destinatarios.");
   }
-}
-
-async function parseSpreadsheet(file: File): Promise<ImportedRecipient[]> {
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const workbook = XLSX.read(buffer, { type: "buffer" });
-  const firstSheet = workbook.SheetNames[0];
-
-  if (!firstSheet) {
-    throw new Error("A planilha nao possui abas validas.");
-  }
-
-  const sheet = workbook.Sheets[firstSheet];
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
-    defval: "",
-    raw: false,
-  });
-
-  if (rows.length === 0) {
-    throw new Error("A planilha esta vazia.");
-  }
-
-  const imported: ImportedRecipient[] = [];
-  const invalidRows: number[] = [];
-  const duplicateCpfs = new Set<string>();
-  const seenCpfs = new Set<string>();
-
-  rows.forEach((row, index) => {
-    const cpf = sanitizeDigits(resolveSpreadsheetValue(row, ["cpf"]));
-    const nome = resolveSpreadsheetValue(row, ["nome", "nome_completo"]);
-    const telefone = sanitizeDigits(resolveSpreadsheetValue(row, ["telefone", "celular", "fone"]));
-    const hotzone = resolveSpreadsheetValue(row, ["hotzone", "praca", "praca_nome"]);
-    const turno = resolveSpreadsheetValue(row, ["turno", "horario", "horario_label"]);
-
-    const rowHasAnyData = [cpf, nome, telefone, hotzone, turno].some(Boolean);
-    if (!rowHasAnyData) {
-      return;
-    }
-
-    if (!cpf || cpf.length !== 11 || !nome || !telefone || !hotzone || !turno) {
-      invalidRows.push(index + 2);
-      return;
-    }
-
-    if (seenCpfs.has(cpf)) {
-      duplicateCpfs.add(cpf);
-      return;
-    }
-
-    seenCpfs.add(cpf);
-    imported.push({ cpf, nome, telefone, hotzone, turno });
-  });
-
-  if (invalidRows.length > 0) {
-    throw new Error(
-      `A planilha tem linha(s) incompleta(s). Confira as linhas ${invalidRows.slice(0, 8).join(", ")}.`,
-    );
-  }
-
-  if (duplicateCpfs.size > 0) {
-    throw new Error(
-      `A planilha possui CPF duplicado. Ajuste antes de enviar: ${Array.from(duplicateCpfs).slice(0, 5).join(", ")}.`,
-    );
-  }
-
-  if (imported.length === 0) {
-    throw new Error("Nenhuma linha valida foi encontrada na planilha.");
-  }
-
-  return imported;
-}
-
-async function getWaitlistMatches(tenantId: string, cpfs: string[]) {
-  const latestWithChat = new Map<string, WaitlistMatch>();
-  const latestAny = new Map<string, WaitlistMatch>();
-
-  for (const cpfChunk of chunkArray(cpfs, 200)) {
-    const { data, error } = await supabaseServer
-      .from("waitlist_requests")
-      .select("id,cpf,nome,telefone,praca,horario_label,telegram_chat_id,created_at")
-      .eq("tenant_id", tenantId)
-      .in("cpf", cpfChunk)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    for (const rawItem of (data || []) as WaitlistMatch[]) {
-      if (!latestAny.has(rawItem.cpf)) {
-        latestAny.set(rawItem.cpf, rawItem);
-      }
-
-      if (rawItem.telegram_chat_id !== null && !latestWithChat.has(rawItem.cpf)) {
-        latestWithChat.set(rawItem.cpf, rawItem);
-      }
-    }
-  }
-
-  return { latestWithChat, latestAny };
 }
 
 async function getWaitlistRecipientsByIds(tenantId: string, waitlistIds: string[]) {
@@ -699,7 +532,6 @@ export async function createTelegramCampaignAction(
 
     let totalEnviado = 0;
     let totalErro = 0;
-    const sourceRecipientByCpf = new Map(importedRecipients.map((item) => [item.cpf, item] as const));
     const shouldIncludeButtons = modoDisparo === "individual" && buttons.length > 0;
 
     for (const recipient of insertedRecipients as InsertedRecipient[]) {
@@ -707,25 +539,17 @@ export async function createTelegramCampaignAction(
         continue;
       }
 
-      const sourceRecipient = sourceRecipientByCpf.get(recipient.cpf);
-
-      if (modoDisparo !== "grupo_telegram" && !sourceRecipient) {
-        totalErro += 1;
-        await supabaseServer
-          .from("telegram_campaign_recipients")
-          .update({
-            status_disparo: "erro_envio",
-            erro: "Destinatario nao encontrado na memoria do disparo.",
-          })
-          .eq("id", recipient.id);
-        continue;
-      }
-
       try {
         const renderedMessage =
           modoDisparo === "grupo_telegram"
             ? mensagem
-            : buildTelegramMessage(mensagem, sourceRecipient as ImportedRecipient);
+            : buildTelegramMessage(mensagem, {
+                cpf: recipient.cpf,
+                nome: recipient.nome,
+                telefone: recipient.telefone || "",
+                hotzone: recipient.hotzone || "",
+                turno: recipient.turno || "",
+              });
         const result = await sendTelegramMessage({
           token: telegramBotToken,
           chatId: recipient.telegram_chat_id,
