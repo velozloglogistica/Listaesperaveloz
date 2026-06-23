@@ -1,8 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
-import { isRedirectError } from "next/dist/client/components/redirect-error";
 
 import { requireTelegramCampaignAccess } from "@/lib/auth";
 import { supabaseServer } from "@/lib/supabase-server";
@@ -19,8 +17,9 @@ import {
 import { TELEGRAM_GROUP_TARGETS } from "@/lib/telegram-group-targets";
 
 export type CampaignActionState = {
-  status: "idle" | "error";
+  status: "idle" | "error" | "success";
   message: string;
+  campaignId?: string;
 };
 
 type CampaignMode = "planilha" | "individual" | "grupo" | "grupo_telegram";
@@ -610,12 +609,12 @@ export async function createTelegramCampaignAction(
     }
 
     revalidatePath("/campanhas-telegram");
-    redirect(`/campanhas-telegram?campaign=${createdCampaign.id}`);
+    return {
+      status: "success",
+      message: `Campanha disparada com sucesso. ${totalEnviado} envio(s) realizado(s) e ${totalSemChatId} registro(s) ficaram sem chat_id.`,
+      campaignId: createdCampaign.id,
+    };
   } catch (error) {
-    if (isRedirectError(error)) {
-      throw error;
-    }
-
     return {
       status: "error",
       message: error instanceof Error ? error.message : "Nao foi possivel processar a campanha.",

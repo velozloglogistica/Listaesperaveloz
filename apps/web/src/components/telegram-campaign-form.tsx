@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useMemo, useRef, useState, type FormEvent } from "react";
+import Link from "next/link";
+import { useActionState, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useFormStatus } from "react-dom";
 
 import { createTelegramCampaignAction, type CampaignActionState } from "@/app/campaign-actions";
@@ -57,6 +58,27 @@ function SubmitButton({ disabled }: { disabled: boolean }) {
   );
 }
 
+function ConfirmModalActions({
+  onCancel,
+  onConfirm,
+}: {
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const { pending } = useFormStatus();
+
+  return (
+    <div className="campaign-confirm-actions">
+      <button type="button" className="secondary-button" onClick={onCancel} disabled={pending}>
+        Voltar
+      </button>
+      <button type="button" className="primary-button" onClick={onConfirm} disabled={pending}>
+        {pending ? "Disparando..." : "Confirmar disparo"}
+      </button>
+    </div>
+  );
+}
+
 function getPreviewStatusLabel(status: SpreadsheetPreviewRow["status"]) {
   if (status === "com_chat_id") {
     return "Com chat_id";
@@ -75,7 +97,9 @@ export function TelegramCampaignForm({
   baseRecipients: CampaignRecipientOption[];
 }) {
   const [state, formAction] = useActionState(createTelegramCampaignAction, initialState);
+  const formRef = useRef<HTMLFormElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const bypassConfirmRef = useRef(false);
   const buttonIdRef = useRef(2);
   const [targetMode, setTargetMode] = useState<CampaignTargetMode>("planilha");
   const [buttons, setButtons] = useState<CampaignButton[]>([
@@ -91,6 +115,7 @@ export function TelegramCampaignForm({
   const [preview, setPreview] = useState<SpreadsheetPreview | null>(null);
   const [previewError, setPreviewError] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 
   const filteredRecipients = useMemo(() => {
     const normalizedQuery = search
@@ -129,6 +154,70 @@ export function TelegramCampaignForm({
     [baseRecipients, selectedIds],
   );
   const selectedRecipient = selectedRecipients[0] || null;
+  const confirmationDetails = useMemo(() => {
+    if (targetMode === "planilha" && preview) {
+      return {
+        eyebrow: "Confirmar campanha",
+        title: "Revisar disparo da planilha",
+        description: "Somente os registros com chat_id vao receber a campanha agora.",
+        items: [
+          { label: "Achados com chat_id", value: String(preview.totalComChatId) },
+          { label: "Encontrados sem chat_id", value: String(preview.totalEncontradoSemChatId) },
+          { label: "CPF nao encontrado", value: String(preview.totalCpfNaoEncontrado) },
+        ],
+      };
+    }
+
+    if (targetMode === "individual") {
+      return {
+        eyebrow: "Confirmar campanha",
+        title: "Disparar para destinatario individual",
+        description: selectedRecipient
+          ? `${selectedRecipient.nome} recebera esta campanha no Telegram.`
+          : "Revise o destinatario selecionado antes de disparar.",
+        items: [
+          { label: "Destino", value: selectedRecipient?.nome || "Nao selecionado" },
+          { label: "CPF", value: selectedRecipient?.cpf || "-" },
+          { label: "Hotzone", value: selectedRecipient?.hotzone || "-" },
+        ],
+      };
+    }
+
+    return {
+      eyebrow: "Confirmar campanha",
+      title: "Disparar para grupos do Telegram",
+      description: "Os grupos selecionados vao receber a mensagem exatamente como foi escrita.",
+      items: [
+        { label: "Grupos selecionados", value: String(selectedGroupIds.length) },
+        { label: "Imagem anexada", value: useImage ? "Sim" : "Nao" },
+        { label: "Botoes", value: "Nao se aplica" },
+      ],
+    };
+  }, [preview, selectedGroupIds.length, selectedRecipient, targetMode, useImage]);
+
+  useEffect(() => {
+    if (state.status !== "success") {
+      return;
+    }
+
+    setIsConfirmOpen(false);
+    setTargetMode("planilha");
+    setButtons([
+      { id: "button-1", label: "Sim" },
+      { id: "button-2", label: "Nao" },
+    ]);
+    buttonIdRef.current = 2;
+    setUseButtons(false);
+    setUseImage(false);
+    setSearch("");
+    setOnlyWithChat(false);
+    setSelectedIds([]);
+    setSelectedGroupIds([]);
+    setPreview(null);
+    setPreviewError("");
+    setIsAnalyzing(false);
+    formRef.current?.reset();
+  }, [state.status]);
 
   function resetPreview() {
     setPreview(null);
@@ -253,28 +342,34 @@ export function TelegramCampaignForm({
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    if (bypassConfirmRef.current) {
+      bypassConfirmRef.current = false;
+      return;
+    }
+
     if (targetMode === "planilha" && !preview) {
       event.preventDefault();
       setPreviewError("Analise a planilha antes de confirmar o disparo.");
       return;
     }
 
-    const confirmationMessage =
-      targetMode === "planilha" && preview
-        ? `Deseja realmente disparar esta campanha?\n\nAchados com chat_id: ${preview.totalComChatId}\nSem chat_id: ${preview.totalEncontradoSemChatId}\nCPF nao encontrado: ${preview.totalCpfNaoEncontrado}`
-        : targetMode === "individual"
-          ? "Deseja realmente disparar esta campanha individual?"
-          : "Deseja realmente disparar esta campanha para os grupos selecionados?";
+    event.preventDefault();
+    setPreviewError("");
+    setIsConfirmOpen(true);
+  }
 
-    const shouldProceed = window.confirm(confirmationMessage);
+  function closeConfirmModal() {
+    setIsConfirmOpen(false);
+  }
 
-    if (!shouldProceed) {
-      event.preventDefault();
-    }
+  function confirmSubmit() {
+    bypassConfirmRef.current = true;
+    setIsConfirmOpen(false);
+    formRef.current?.requestSubmit();
   }
 
   return (
-    <form action={formAction} className="hierarchy-form" onSubmit={handleSubmit}>
+    <form ref={formRef} action={formAction} className="hierarchy-form" onSubmit={handleSubmit}>
       <input type="hidden" name="target_mode" value={targetMode} />
       <input
         type="hidden"
@@ -671,7 +766,59 @@ export function TelegramCampaignForm({
       ) : null}
 
       {state.message ? (
-        <p className="manual-form-feedback manual-form-feedback-error">{state.message}</p>
+        <div
+          className={
+            state.status === "success"
+              ? "manual-form-feedback manual-form-feedback-success"
+              : "manual-form-feedback manual-form-feedback-error"
+          }
+        >
+          <strong>{state.status === "success" ? "Campanha disparada" : "Nao foi possivel disparar"}</strong>
+          <span>{state.message}</span>
+          {state.status === "success" && state.campaignId ? (
+            <Link href={`/campanhas-telegram?campaign=${state.campaignId}`} className="campaign-feedback-link">
+              Abrir campanha disparada
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
+
+      {isConfirmOpen ? (
+        <div className="campaign-confirm-backdrop" role="presentation" onClick={closeConfirmModal}>
+          <div
+            className="campaign-confirm-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="campaign-confirm-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="campaign-confirm-header">
+              <div>
+                <span className="campaign-section-eyebrow">{confirmationDetails.eyebrow}</span>
+                <h3 id="campaign-confirm-title">{confirmationDetails.title}</h3>
+                <p className="campaign-card-copy">{confirmationDetails.description}</p>
+              </div>
+              <button
+                type="button"
+                className="secondary-button campaign-confirm-close"
+                onClick={closeConfirmModal}
+              >
+                Fechar
+              </button>
+            </div>
+
+            <div className="campaign-confirm-grid">
+              {confirmationDetails.items.map((item) => (
+                <div key={item.label} className="campaign-confirm-stat">
+                  <span>{item.label}</span>
+                  <strong>{item.value}</strong>
+                </div>
+              ))}
+            </div>
+
+            <ConfirmModalActions onCancel={closeConfirmModal} onConfirm={confirmSubmit} />
+          </div>
+        </div>
       ) : null}
     </form>
   );
