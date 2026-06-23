@@ -74,7 +74,7 @@ export function TenantForm() {
                 type="checkbox"
                 name="module_slugs"
                 value={module.slug}
-                defaultChecked={CORE_COMPANY_MODULE_SLUGS.includes(module.slug)}
+                defaultChecked={(CORE_COMPANY_MODULE_SLUGS as readonly string[]).includes(module.slug)}
               />
               <span>
                 <strong>{module.name}</strong>
