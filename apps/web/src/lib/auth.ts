@@ -128,6 +128,16 @@ export async function requireWaitlistAccess() {
   return user;
 }
 
+export async function requireTelegramCampaignAccess() {
+  const user = await requireAppUser();
+
+  if (!canAccessModule(user, "telegram_campaigns")) {
+    redirect("/login?error=sem_permissao");
+  }
+
+  return user;
+}
+
 export async function requireOwner() {
   const user = await requireAppUser();
 

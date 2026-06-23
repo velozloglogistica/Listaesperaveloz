@@ -6,7 +6,7 @@ import { isRedirectError } from "next/dist/client/components/redirect-error";
 
 import * as XLSX from "xlsx";
 
-import { requireWaitlistAccess } from "@/lib/auth";
+import { requireTelegramCampaignAccess } from "@/lib/auth";
 import { supabaseServer } from "@/lib/supabase-server";
 import { TELEGRAM_GROUP_TARGETS } from "@/lib/telegram-group-targets";
 
@@ -560,7 +560,7 @@ export async function createTelegramCampaignAction(
   _prevState: CampaignActionState = initialState,
   formData: FormData,
 ): Promise<CampaignActionState> {
-  const actor = await requireWaitlistAccess();
+  const actor = await requireTelegramCampaignAccess();
   const tenantId = actor.current_tenant.id;
   const nomeCampanha = String(formData.get("nome_campanha") || "").trim();
   const mensagem = String(formData.get("mensagem") || "").trim();
