@@ -44,6 +44,17 @@ type TelegramCampaignRecipient = {
   created_at: string;
 };
 
+type CampaignRecipientOption = {
+  id: string;
+  cpf: string;
+  nome: string;
+  telefone: string | null;
+  hotzone: string | null;
+  turno: string | null;
+  telegram_chat_id: number | null;
+  created_at: string;
+};
+
 function firstParam(value?: string | string[]) {
   if (Array.isArray(value)) {
     return value[0] ?? "";
@@ -104,6 +115,41 @@ async function getCampaigns(tenantId: string) {
   return (data || []) as TelegramCampaign[];
 }
 
+async function getCampaignRecipientOptions(tenantId: string) {
+  const { data, error } = await supabaseServer
+    .from("waitlist_requests")
+    .select("id,cpf,nome,telefone,praca,horario_label,telegram_chat_id,created_at")
+    .eq("tenant_id", tenantId)
+    .order("created_at", { ascending: false })
+    .limit(1200);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const uniqueRecipients = new Map<string, CampaignRecipientOption>();
+
+  for (const item of data || []) {
+    const cpf = String(item.cpf || "").replace(/\D/g, "");
+    if (!cpf || uniqueRecipients.has(cpf)) {
+      continue;
+    }
+
+    uniqueRecipients.set(cpf, {
+      id: String(item.id),
+      cpf,
+      nome: String(item.nome || "Sem nome"),
+      telefone: item.telefone ? String(item.telefone) : null,
+      hotzone: item.praca ? String(item.praca) : null,
+      turno: item.horario_label ? String(item.horario_label) : null,
+      telegram_chat_id: typeof item.telegram_chat_id === "number" ? item.telegram_chat_id : null,
+      created_at: String(item.created_at || ""),
+    });
+  }
+
+  return Array.from(uniqueRecipients.values());
+}
+
 async function getCampaignRecipients(tenantId: string, campaignId: string) {
   const { data, error } = await supabaseServer
     .from("telegram_campaign_recipients")
@@ -130,6 +176,7 @@ export default async function TelegramCampaignsPage({
   const currentUser = await requireTelegramCampaignAccess();
   const tenantId = currentUser.current_tenant.id;
   const campaigns = await getCampaigns(tenantId);
+  const recipientOptions = await getCampaignRecipientOptions(tenantId);
   const selectedCampaign =
     campaigns.find((item) => item.id === selectedCampaignId) || campaigns[0] || null;
   const recipients = selectedCampaign
@@ -149,17 +196,17 @@ export default async function TelegramCampaignsPage({
     <AppShell
       currentPath="/campanhas-telegram"
       title="Campanhas Telegram"
-      description="Suba uma planilha, valide quantos CPFs achamos com chat_id e confirme o disparo so depois da analise."
+      description="Escolha entre planilha, envio individual ou grupos oficiais do Telegram no mesmo fluxo."
       user={currentUser}
     >
       <section className="panel">
         <div className="panel-header">
           <div>
             <h2>Nova campanha</h2>
-            <p>Use a planilha com nome e CPF, veja o cruzamento por CPF com a base e confirme o envio somente para quem tiver chat_id.</p>
+            <p>Use planilha com preview por CPF, envie para uma pessoa da base ou dispare para grupos oficiais do Telegram.</p>
           </div>
         </div>
-        <TelegramCampaignForm />
+        <TelegramCampaignForm baseRecipients={recipientOptions} />
       </section>
 
       <section className="panel">
@@ -193,7 +240,7 @@ export default async function TelegramCampaignsPage({
         ) : (
           <div className="empty-state">
             <h2>Nenhuma campanha criada</h2>
-            <p>Crie sua primeira campanha por planilha e acompanhe achados, nao encontrados e sem chat_id.</p>
+            <p>Crie sua primeira campanha por planilha, individual ou para grupo do Telegram.</p>
           </div>
         )}
       </section>
