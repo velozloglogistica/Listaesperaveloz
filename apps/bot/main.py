@@ -466,39 +466,77 @@ def normalize_campaign_buttons(campaign: dict) -> list[str]:
     return [item for item in fallback if item]
 
 
+async def notify_campaign_click(
+    query,
+    message: str,
+    *,
+    remove_markup: bool = False,
+    show_alert: bool = False,
+) -> None:
+    await query.answer(message, show_alert=show_alert)
+
+    if remove_markup:
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except Exception:
+            logger.exception("Nao foi possivel remover os botoes da campanha")
+
+    if query.message:
+        await query.message.reply_text(message)
+
+
 async def campaign_response_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     if not query:
         return
 
-    await query.answer()
-
     parts = (query.data or "").split(":")
     if len(parts) != 3:
-        await query.edit_message_text("Resposta invalida. Tente novamente mais tarde.")
+        await notify_campaign_click(
+            query,
+            "Resposta invalida. Tente novamente mais tarde.",
+            show_alert=True,
+        )
         return
 
     _, recipient_id, option_key = parts
     recipient = get_campaign_recipient(recipient_id)
 
     if not recipient:
-        await query.edit_message_text("Essa campanha nao foi encontrada ou ja expirou.")
+        await notify_campaign_click(
+            query,
+            "Essa campanha nao foi encontrada ou ja expirou.",
+            show_alert=True,
+        )
         return
 
     effective_chat = update.effective_chat.id if update.effective_chat else None
     stored_chat = recipient.get("telegram_chat_id")
     if stored_chat and effective_chat and int(stored_chat) != int(effective_chat):
-        await query.edit_message_text("Esse botao nao pertence a esta conversa.")
+        await notify_campaign_click(
+            query,
+            "Esse botao nao pertence a esta conversa.",
+            show_alert=True,
+        )
         return
 
     if recipient.get("status_resposta") == "respondido":
         resposta = recipient.get("resposta") or "Resposta ja registrada"
-        await query.edit_message_text(f"Voce ja respondeu anteriormente: {resposta}.")
+        await notify_campaign_click(
+            query,
+            f"Voce ja respondeu anteriormente: {resposta}.",
+            remove_markup=True,
+            show_alert=True,
+        )
         return
 
     campaign = get_campaign_buttons(recipient["campaign_id"])
     if not campaign:
-        await query.edit_message_text("Campanha nao encontrada. Tente novamente mais tarde.")
+        await notify_campaign_click(
+            query,
+            "Campanha nao encontrada. Tente novamente mais tarde.",
+            show_alert=True,
+        )
         return
 
     buttons = normalize_campaign_buttons(campaign)
@@ -506,24 +544,45 @@ async def campaign_response_callback(update: Update, context: ContextTypes.DEFAU
     try:
         option_index = int(option_key) - 1
     except ValueError:
-        await query.edit_message_text("Opcao invalida. Tente novamente mais tarde.")
+        await notify_campaign_click(
+            query,
+            "Opcao invalida. Tente novamente mais tarde.",
+            show_alert=True,
+        )
         return
 
     if option_index < 0 or option_index >= len(buttons):
-        await query.edit_message_text("Opcao invalida. Tente novamente mais tarde.")
+        await notify_campaign_click(
+            query,
+            "Opcao invalida. Tente novamente mais tarde.",
+            show_alert=True,
+        )
         return
 
     resposta = buttons[option_index]
 
-    supabase.table("telegram_campaign_recipients").update(
-        {
-            "status_resposta": "respondido",
-            "resposta": resposta,
-            "respondido_em": now_manaus().isoformat(),
-        }
-    ).eq("id", recipient_id).execute()
+    try:
+        supabase.table("telegram_campaign_recipients").update(
+            {
+                "status_resposta": "respondido",
+                "resposta": resposta,
+                "respondido_em": now_manaus().isoformat(),
+            }
+        ).eq("id", recipient_id).execute()
+    except Exception:
+        logger.exception("Nao foi possivel registrar a resposta da campanha")
+        await notify_campaign_click(
+            query,
+            "Nao foi possivel registrar sua resposta agora. Tente novamente em instantes.",
+            show_alert=True,
+        )
+        return
 
-    await query.edit_message_text("Resposta registrada com sucesso. Obrigado!")
+    await notify_campaign_click(
+        query,
+        f"Resposta registrada: {resposta}. Obrigado!",
+        remove_markup=True,
+    )
 
 
 async def confirmar_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
