@@ -110,6 +110,26 @@ function getModeLabel(mode: TelegramCampaign["modo_disparo"]) {
   return "Planilha";
 }
 
+function getDeliveryStatusMeta(status: TelegramCampaignRecipient["status_disparo"]) {
+  if (status === "enviado") {
+    return { label: "Enviado", className: "day-chip day-chip-success" };
+  }
+
+  if (status === "sem_chat_id") {
+    return { label: "Sem chat_id", className: "day-chip day-chip-warning" };
+  }
+
+  return { label: "Erro no envio", className: "day-chip day-chip-danger" };
+}
+
+function getResponseStatusMeta(status: TelegramCampaignRecipient["status_resposta"]) {
+  if (status === "respondido") {
+    return { label: "Respondido", className: "day-chip day-chip-success" };
+  }
+
+  return { label: "Aguardando", className: "day-chip day-chip-info" };
+}
+
 async function getCampaigns(tenantId: string) {
   const { data, error } = await supabaseServer
     .from("telegram_campaigns")
@@ -358,8 +378,16 @@ export default async function TelegramCampaignsPage({
                           ) : null}
                         </div>
                       </td>
-                      <td>{recipient.status_disparo}</td>
-                      <td>{recipient.status_resposta}</td>
+                      <td>
+                        <span className={getDeliveryStatusMeta(recipient.status_disparo).className}>
+                          {getDeliveryStatusMeta(recipient.status_disparo).label}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={getResponseStatusMeta(recipient.status_resposta).className}>
+                          {getResponseStatusMeta(recipient.status_resposta).label}
+                        </span>
+                      </td>
                       <td>{recipient.resposta || "-"}</td>
                       <td>{formatDateTime(recipient.enviado_em)}</td>
                       <td>{formatDateTime(recipient.respondido_em)}</td>

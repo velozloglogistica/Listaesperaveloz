@@ -293,6 +293,32 @@ async function sendTelegramMessage(params: {
   media: PreparedCampaignMedia | null;
   includeButtons?: boolean;
 }) {
+  // #region debug-point C:telegram-send-entry
+  const reportServerDebugEvent = async (
+    hypothesisId: string,
+    location: string,
+    msg: string,
+    data: Record<string, unknown>,
+  ) => {
+    await fetch("http://127.0.0.1:7778/event", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        sessionId: "telegram-image-group-crash",
+        runId: "pre-fix",
+        hypothesisId,
+        location,
+        msg,
+        data,
+        ts: Date.now(),
+      }),
+      cache: "no-store",
+    }).catch(() => {});
+  };
+  // #endregion
+
   const shouldIncludeButtons = params.includeButtons ?? true;
   const replyMarkup =
     shouldIncludeButtons && params.buttons.length > 0
@@ -327,6 +353,18 @@ async function sendTelegramMessage(params: {
   const caption = params.text.length <= 1024 ? params.text : "";
   const photoBody = new FormData();
   const mediaBytes = new Uint8Array(params.media.buffer);
+  // #region debug-point C:send-photo-input
+  await reportServerDebugEvent("C", "campaign-actions.ts:sendPhoto:input", "[DEBUG] sendPhoto branch entered", {
+    chatId: params.chatId,
+    hasMedia: Boolean(params.media),
+    contentType: params.media.contentType,
+    fileName: params.media.fileName,
+    mediaBytes: mediaBytes.byteLength,
+    textLength: params.text.length,
+    captionLength: caption.length,
+    shouldIncludeButtons,
+  });
+  // #endregion
   photoBody.append("chat_id", String(params.chatId));
   photoBody.append(
     "photo",
@@ -349,6 +387,14 @@ async function sendTelegramMessage(params: {
   });
 
   const rawPhotoBody = await photoResponse.text();
+  // #region debug-point D:send-photo-result
+  await reportServerDebugEvent("D", "campaign-actions.ts:sendPhoto:result", "[DEBUG] sendPhoto completed", {
+    chatId: params.chatId,
+    ok: photoResponse.ok,
+    status: photoResponse.status,
+    bodyPreview: rawPhotoBody.slice(0, 300),
+  });
+  // #endregion
 
   if (!photoResponse.ok) {
     return {
@@ -436,6 +482,31 @@ export async function createTelegramCampaignAction(
   try {
     const selectedTelegramGroups =
       modoDisparo === "grupo_telegram" ? resolveSelectedTelegramGroups(formData) : [];
+    // #region debug-point C:campaign-entry
+    await fetch("http://127.0.0.1:7778/event", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        sessionId: "telegram-image-group-crash",
+        runId: "pre-fix",
+        hypothesisId: "C",
+        location: "campaign-actions.ts:createCampaignAction",
+        msg: "[DEBUG] campaign action prepared",
+        data: {
+          mode: modoDisparo,
+          hasMedia: Boolean(campaignMedia),
+          mediaFileName: campaignMedia?.fileName || null,
+          mediaContentType: campaignMedia?.contentType || null,
+          selectedTelegramGroups: selectedTelegramGroups.length,
+          buttons: buttons.length,
+        },
+        ts: Date.now(),
+      }),
+      cache: "no-store",
+    }).catch(() => {});
+    // #endregion
     const cpfs = importedRecipients.map((item) => item.cpf);
     const { latestWithChat, latestAny } = await getWaitlistMatches(tenantId, cpfs);
 
@@ -615,6 +686,26 @@ export async function createTelegramCampaignAction(
       campaignId: createdCampaign.id,
     };
   } catch (error) {
+    // #region debug-point D:action-error
+    await fetch("http://127.0.0.1:7778/event", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        sessionId: "telegram-image-group-crash",
+        runId: "pre-fix",
+        hypothesisId: "D",
+        location: "campaign-actions.ts:createCampaignAction:catch",
+        msg: "[DEBUG] campaign action failed",
+        data: {
+          error: error instanceof Error ? error.message : "unknown",
+        },
+        ts: Date.now(),
+      }),
+      cache: "no-store",
+    }).catch(() => {});
+    // #endregion
     return {
       status: "error",
       message: error instanceof Error ? error.message : "Nao foi possivel processar a campanha.",
