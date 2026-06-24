@@ -75,6 +75,16 @@ function formatDateTime(value: string | null) {
   }).format(new Date(value));
 }
 
+function summarizeMessage(value: string, limit = 120) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+
+  if (normalized.length <= limit) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, limit).trimEnd()}...`;
+}
+
 function getCampaignButtons(campaign: TelegramCampaign | null) {
   if (!campaign) {
     return [];
@@ -98,6 +108,26 @@ function getModeLabel(mode: TelegramCampaign["modo_disparo"]) {
   }
 
   return "Planilha";
+}
+
+function getDeliveryStatusMeta(status: TelegramCampaignRecipient["status_disparo"]) {
+  if (status === "enviado") {
+    return { label: "Enviado", className: "day-chip day-chip-success" };
+  }
+
+  if (status === "sem_chat_id") {
+    return { label: "Sem chat_id", className: "day-chip day-chip-warning" };
+  }
+
+  return { label: "Erro no envio", className: "day-chip day-chip-danger" };
+}
+
+function getResponseStatusMeta(status: TelegramCampaignRecipient["status_resposta"]) {
+  if (status === "respondido") {
+    return { label: "Respondido", className: "day-chip day-chip-success" };
+  }
+
+  return { label: "Aguardando", className: "day-chip day-chip-info" };
 }
 
 async function getCampaigns(tenantId: string) {
@@ -323,12 +353,10 @@ export default async function TelegramCampaignsPage({
                   <tr>
                     <th>Nome</th>
                     <th>CPF</th>
-                    <th>Telefone</th>
-                    <th>Hotzone</th>
-                    <th>Turno</th>
+                    <th>Mensagem</th>
                     <th>Status envio</th>
                     <th>Status resposta</th>
-                    <th>Resposta</th>
+                    <th>Opcao selecionada</th>
                     <th>Enviado em</th>
                     <th>Respondido em</th>
                     <th>Erro</th>
@@ -339,11 +367,27 @@ export default async function TelegramCampaignsPage({
                     <tr key={recipient.id}>
                       <td>{recipient.nome}</td>
                       <td>{recipient.cpf}</td>
-                      <td>{recipient.telefone || "-"}</td>
-                      <td>{recipient.hotzone || "-"}</td>
-                      <td>{recipient.turno || "-"}</td>
-                      <td>{recipient.status_disparo}</td>
-                      <td>{recipient.status_resposta}</td>
+                      <td>
+                        <div className="campaign-message-preview">
+                          <span>{summarizeMessage(selectedCampaign.mensagem)}</span>
+                          {selectedCampaign.mensagem.trim().length > 120 ? (
+                            <details className="campaign-message-preview-details">
+                              <summary>Ver completa</summary>
+                              <p>{selectedCampaign.mensagem}</p>
+                            </details>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td>
+                        <span className={getDeliveryStatusMeta(recipient.status_disparo).className}>
+                          {getDeliveryStatusMeta(recipient.status_disparo).label}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={getResponseStatusMeta(recipient.status_resposta).className}>
+                          {getResponseStatusMeta(recipient.status_resposta).label}
+                        </span>
+                      </td>
                       <td>{recipient.resposta || "-"}</td>
                       <td>{formatDateTime(recipient.enviado_em)}</td>
                       <td>{formatDateTime(recipient.respondido_em)}</td>

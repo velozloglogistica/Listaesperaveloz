@@ -1,7 +1,7 @@
 "use client";
 
-import { useActionState, useMemo, useRef, useState, type FormEvent } from "react";
-import { useFormStatus } from "react-dom";
+import Link from "next/link";
+import { useActionState, useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
 
 import { createTelegramCampaignAction, type CampaignActionState } from "@/app/campaign-actions";
 import { TELEGRAM_GROUP_TARGETS } from "@/lib/telegram-group-targets";
@@ -47,13 +47,32 @@ const initialState: CampaignActionState = {
   message: "",
 };
 
-function SubmitButton({ disabled }: { disabled: boolean }) {
-  const { pending } = useFormStatus();
-
+function SubmitButton({ disabled, pending }: { disabled: boolean; pending: boolean }) {
   return (
     <button type="submit" className="primary-button" disabled={pending || disabled}>
       {pending ? "Disparando campanha..." : "Confirmar e disparar"}
     </button>
+  );
+}
+
+function ConfirmModalActions({
+  onCancel,
+  onConfirm,
+  pending,
+}: {
+  onCancel: () => void;
+  onConfirm: () => void;
+  pending: boolean;
+}) {
+  return (
+    <div className="campaign-confirm-actions">
+      <button type="button" className="secondary-button" onClick={onCancel} disabled={pending}>
+        Voltar
+      </button>
+      <button type="button" className="primary-button" onClick={onConfirm} disabled={pending}>
+        {pending ? "Disparando..." : "Confirmar disparo"}
+      </button>
+    </div>
   );
 }
 
@@ -75,6 +94,8 @@ export function TelegramCampaignForm({
   baseRecipients: CampaignRecipientOption[];
 }) {
   const [state, formAction] = useActionState(createTelegramCampaignAction, initialState);
+  const [isSubmitting, startSubmitting] = useTransition();
+  const formRef = useRef<HTMLFormElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const buttonIdRef = useRef(2);
   const [targetMode, setTargetMode] = useState<CampaignTargetMode>("planilha");
@@ -91,6 +112,7 @@ export function TelegramCampaignForm({
   const [preview, setPreview] = useState<SpreadsheetPreview | null>(null);
   const [previewError, setPreviewError] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 
   const filteredRecipients = useMemo(() => {
     const normalizedQuery = search
@@ -129,6 +151,149 @@ export function TelegramCampaignForm({
     [baseRecipients, selectedIds],
   );
   const selectedRecipient = selectedRecipients[0] || null;
+  const confirmationDetails = useMemo(() => {
+    if (targetMode === "planilha" && preview) {
+      return {
+        eyebrow: "Confirmar campanha",
+        title: "Revisar disparo da planilha",
+        description: "Somente os registros com chat_id vao receber a campanha agora.",
+        items: [
+          { label: "Achados com chat_id", value: String(preview.totalComChatId) },
+          { label: "Encontrados sem chat_id", value: String(preview.totalEncontradoSemChatId) },
+          { label: "CPF nao encontrado", value: String(preview.totalCpfNaoEncontrado) },
+        ],
+      };
+    }
+
+    if (targetMode === "individual") {
+      return {
+        eyebrow: "Confirmar campanha",
+        title: "Disparar para destinatario individual",
+        description: selectedRecipient
+          ? `${selectedRecipient.nome} recebera esta campanha no Telegram.`
+          : "Revise o destinatario selecionado antes de disparar.",
+        items: [
+          { label: "Destino", value: selectedRecipient?.nome || "Nao selecionado" },
+          { label: "CPF", value: selectedRecipient?.cpf || "-" },
+          { label: "Hotzone", value: selectedRecipient?.hotzone || "-" },
+        ],
+      };
+    }
+
+    return {
+      eyebrow: "Confirmar campanha",
+      title: "Disparar para grupos do Telegram",
+      description: "Os grupos selecionados vao receber a mensagem exatamente como foi escrita.",
+      items: [
+        { label: "Grupos selecionados", value: String(selectedGroupIds.length) },
+        { label: "Imagem anexada", value: useImage ? "Sim" : "Nao" },
+        { label: "Botoes", value: "Nao se aplica" },
+      ],
+    };
+  }, [preview, selectedGroupIds.length, selectedRecipient, targetMode, useImage]);
+
+  useEffect(() => {
+    // #region debug-point E:client-errors
+    const reportClientDebugEvent = (hypothesisId: string, msg: string, data: Record<string, unknown>) => {
+      fetch("http://127.0.0.1:7778/event", {
+        method: "POST",
+        body: JSON.stringify({
+          sessionId: "telegram-image-group-crash",
+          runId: "pre-fix",
+          hypothesisId,
+          location: "telegram-campaign-form.tsx:client",
+          msg,
+          data,
+          ts: Date.now(),
+        }),
+      }).catch(() => {});
+    };
+
+    const handleWindowError = (event: ErrorEvent) => {
+      reportClientDebugEvent("E", "[DEBUG] client window error", {
+        message: event.message,
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+      });
+    };
+
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      reportClientDebugEvent("E", "[DEBUG] client unhandled rejection", {
+        reason:
+          typeof event.reason === "object" && event.reason !== null
+            ? JSON.stringify(event.reason)
+            : String(event.reason),
+      });
+    };
+
+    window.addEventListener("error", handleWindowError);
+    window.addEventListener("unhandledrejection", handleUnhandledRejection);
+
+    return () => {
+      window.removeEventListener("error", handleWindowError);
+      window.removeEventListener("unhandledrejection", handleUnhandledRejection);
+    };
+    // #endregion
+  }, []);
+
+  useEffect(() => {
+    // #region debug-point A:action-state
+    fetch("http://127.0.0.1:7778/event", {
+      method: "POST",
+      body: JSON.stringify({
+        sessionId: "telegram-image-group-crash",
+        runId: "pre-fix",
+        hypothesisId: "A",
+        location: "telegram-campaign-form.tsx:state",
+        msg: "[DEBUG] action state changed",
+        data: {
+          status: state.status,
+          targetMode,
+          useImage,
+          selectedGroups: selectedGroupIds.length,
+          hasCampaignId: Boolean(state.campaignId),
+          isSubmitting,
+          messagePreview: state.message.slice(0, 120),
+        },
+        ts: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+  }, [isSubmitting, selectedGroupIds.length, state.campaignId, state.message, state.status, targetMode, useImage]);
+
+  useEffect(() => {
+    if (state.status !== "success") {
+      return;
+    }
+
+    // #region debug-point B:success-reset
+    fetch("http://127.0.0.1:7778/event", {
+      method: "POST",
+      body: JSON.stringify({
+        sessionId: "telegram-image-group-crash",
+        runId: "pre-fix",
+        hypothesisId: "B",
+        location: "telegram-campaign-form.tsx:success-effect",
+        msg: "[DEBUG] success effect before form reset",
+        data: {
+          targetMode,
+          useImage,
+          selectedGroups: selectedGroupIds.length,
+          fileInputMounted: Boolean(fileInputRef.current),
+          fileCount: fileInputRef.current?.files?.length || 0,
+        },
+        ts: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
+
+    setIsConfirmOpen(false);
+    setPreview(null);
+    setPreviewError("");
+    setIsAnalyzing(false);
+    formRef.current?.reset();
+  }, [selectedGroupIds.length, state.status, targetMode, useImage]);
 
   function resetPreview() {
     setPreview(null);
@@ -259,22 +424,29 @@ export function TelegramCampaignForm({
       return;
     }
 
-    const confirmationMessage =
-      targetMode === "planilha" && preview
-        ? `Deseja realmente disparar esta campanha?\n\nAchados com chat_id: ${preview.totalComChatId}\nSem chat_id: ${preview.totalEncontradoSemChatId}\nCPF nao encontrado: ${preview.totalCpfNaoEncontrado}`
-        : targetMode === "individual"
-          ? "Deseja realmente disparar esta campanha individual?"
-          : "Deseja realmente disparar esta campanha para os grupos selecionados?";
+    event.preventDefault();
+    setPreviewError("");
+    setIsConfirmOpen(true);
+  }
 
-    const shouldProceed = window.confirm(confirmationMessage);
+  function closeConfirmModal() {
+    setIsConfirmOpen(false);
+  }
 
-    if (!shouldProceed) {
-      event.preventDefault();
+  function confirmSubmit() {
+    if (!formRef.current) {
+      return;
     }
+
+    const formData = new FormData(formRef.current);
+    setIsConfirmOpen(false);
+    startSubmitting(() => {
+      formAction(formData);
+    });
   }
 
   return (
-    <form action={formAction} className="hierarchy-form" onSubmit={handleSubmit}>
+    <form ref={formRef} className="hierarchy-form" onSubmit={handleSubmit}>
       <input type="hidden" name="target_mode" value={targetMode} />
       <input
         type="hidden"
@@ -656,6 +828,7 @@ export function TelegramCampaignForm({
 
       <div className="manual-form-actions">
         <SubmitButton
+          pending={isSubmitting}
           disabled={
             targetMode === "planilha"
               ? !preview
@@ -671,7 +844,59 @@ export function TelegramCampaignForm({
       ) : null}
 
       {state.message ? (
-        <p className="manual-form-feedback manual-form-feedback-error">{state.message}</p>
+        <div
+          className={
+            state.status === "success"
+              ? "manual-form-feedback manual-form-feedback-success"
+              : "manual-form-feedback manual-form-feedback-error"
+          }
+        >
+          <strong>{state.status === "success" ? "Campanha disparada" : "Nao foi possivel disparar"}</strong>
+          <span>{state.message}</span>
+          {state.status === "success" && state.campaignId ? (
+            <Link href={`/campanhas-telegram?campaign=${state.campaignId}`} className="campaign-feedback-link">
+              Abrir campanha disparada
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
+
+      {isConfirmOpen ? (
+        <div className="campaign-confirm-backdrop" role="presentation" onClick={closeConfirmModal}>
+          <div
+            className="campaign-confirm-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="campaign-confirm-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="campaign-confirm-header">
+              <div>
+                <span className="campaign-section-eyebrow">{confirmationDetails.eyebrow}</span>
+                <h3 id="campaign-confirm-title">{confirmationDetails.title}</h3>
+                <p className="campaign-card-copy">{confirmationDetails.description}</p>
+              </div>
+              <button
+                type="button"
+                className="secondary-button campaign-confirm-close"
+                onClick={closeConfirmModal}
+              >
+                Fechar
+              </button>
+            </div>
+
+            <div className="campaign-confirm-grid">
+              {confirmationDetails.items.map((item) => (
+                <div key={item.label} className="campaign-confirm-stat">
+                  <span>{item.label}</span>
+                  <strong>{item.value}</strong>
+                </div>
+              ))}
+            </div>
+
+            <ConfirmModalActions onCancel={closeConfirmModal} onConfirm={confirmSubmit} pending={isSubmitting} />
+          </div>
+        </div>
       ) : null}
     </form>
   );
