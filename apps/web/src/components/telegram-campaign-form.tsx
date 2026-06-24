@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useFormStatus } from "react-dom";
 
 import { createTelegramCampaignAction, type CampaignActionState } from "@/app/campaign-actions";
 import { TELEGRAM_GROUP_TARGETS } from "@/lib/telegram-group-targets";
@@ -47,7 +48,9 @@ const initialState: CampaignActionState = {
   message: "",
 };
 
-function SubmitButton({ disabled, pending }: { disabled: boolean; pending: boolean }) {
+function SubmitButton({ disabled }: { disabled: boolean }) {
+  const { pending } = useFormStatus();
+
   return (
     <button type="submit" className="primary-button" disabled={pending || disabled}>
       {pending ? "Disparando campanha..." : "Confirmar e disparar"}
@@ -58,12 +61,12 @@ function SubmitButton({ disabled, pending }: { disabled: boolean; pending: boole
 function ConfirmModalActions({
   onCancel,
   onConfirm,
-  pending,
 }: {
   onCancel: () => void;
   onConfirm: () => void;
-  pending: boolean;
 }) {
+  const { pending } = useFormStatus();
+
   return (
     <div className="campaign-confirm-actions">
       <button type="button" className="secondary-button" onClick={onCancel} disabled={pending}>
@@ -94,9 +97,9 @@ export function TelegramCampaignForm({
   baseRecipients: CampaignRecipientOption[];
 }) {
   const [state, formAction] = useActionState(createTelegramCampaignAction, initialState);
-  const [isSubmitting, startSubmitting] = useTransition();
   const formRef = useRef<HTMLFormElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const bypassConfirmRef = useRef(false);
   const buttonIdRef = useRef(2);
   const [targetMode, setTargetMode] = useState<CampaignTargetMode>("planilha");
   const [buttons, setButtons] = useState<CampaignButton[]>([
@@ -253,14 +256,13 @@ export function TelegramCampaignForm({
           useImage,
           selectedGroups: selectedGroupIds.length,
           hasCampaignId: Boolean(state.campaignId),
-          isSubmitting,
           messagePreview: state.message.slice(0, 120),
         },
         ts: Date.now(),
       }),
     }).catch(() => {});
     // #endregion
-  }, [isSubmitting, selectedGroupIds.length, state.campaignId, state.message, state.status, targetMode, useImage]);
+  }, [selectedGroupIds.length, state.campaignId, state.message, state.status, targetMode, useImage]);
 
   useEffect(() => {
     if (state.status !== "success") {
@@ -418,6 +420,11 @@ export function TelegramCampaignForm({
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    if (bypassConfirmRef.current) {
+      bypassConfirmRef.current = false;
+      return;
+    }
+
     if (targetMode === "planilha" && !preview) {
       event.preventDefault();
       setPreviewError("Analise a planilha antes de confirmar o disparo.");
@@ -434,19 +441,13 @@ export function TelegramCampaignForm({
   }
 
   function confirmSubmit() {
-    if (!formRef.current) {
-      return;
-    }
-
-    const formData = new FormData(formRef.current);
+    bypassConfirmRef.current = true;
     setIsConfirmOpen(false);
-    startSubmitting(() => {
-      formAction(formData);
-    });
+    formRef.current?.requestSubmit();
   }
 
   return (
-    <form ref={formRef} className="hierarchy-form" onSubmit={handleSubmit}>
+    <form ref={formRef} action={formAction} className="hierarchy-form" onSubmit={handleSubmit}>
       <input type="hidden" name="target_mode" value={targetMode} />
       <input
         type="hidden"
@@ -828,7 +829,6 @@ export function TelegramCampaignForm({
 
       <div className="manual-form-actions">
         <SubmitButton
-          pending={isSubmitting}
           disabled={
             targetMode === "planilha"
               ? !preview
@@ -894,7 +894,7 @@ export function TelegramCampaignForm({
               ))}
             </div>
 
-            <ConfirmModalActions onCancel={closeConfirmModal} onConfirm={confirmSubmit} pending={isSubmitting} />
+            <ConfirmModalActions onCancel={closeConfirmModal} onConfirm={confirmSubmit} />
           </div>
         </div>
       ) : null}
