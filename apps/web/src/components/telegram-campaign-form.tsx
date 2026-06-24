@@ -196,99 +196,9 @@ export function TelegramCampaignForm({
   }, [preview, selectedGroupIds.length, selectedRecipient, targetMode, useImage]);
 
   useEffect(() => {
-    // #region debug-point E:client-errors
-    const reportClientDebugEvent = (hypothesisId: string, msg: string, data: Record<string, unknown>) => {
-      fetch("http://127.0.0.1:7778/event", {
-        method: "POST",
-        body: JSON.stringify({
-          sessionId: "telegram-image-group-crash",
-          runId: "pre-fix",
-          hypothesisId,
-          location: "telegram-campaign-form.tsx:client",
-          msg,
-          data,
-          ts: Date.now(),
-        }),
-      }).catch(() => {});
-    };
-
-    const handleWindowError = (event: ErrorEvent) => {
-      reportClientDebugEvent("E", "[DEBUG] client window error", {
-        message: event.message,
-        filename: event.filename,
-        lineno: event.lineno,
-        colno: event.colno,
-      });
-    };
-
-    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
-      reportClientDebugEvent("E", "[DEBUG] client unhandled rejection", {
-        reason:
-          typeof event.reason === "object" && event.reason !== null
-            ? JSON.stringify(event.reason)
-            : String(event.reason),
-      });
-    };
-
-    window.addEventListener("error", handleWindowError);
-    window.addEventListener("unhandledrejection", handleUnhandledRejection);
-
-    return () => {
-      window.removeEventListener("error", handleWindowError);
-      window.removeEventListener("unhandledrejection", handleUnhandledRejection);
-    };
-    // #endregion
-  }, []);
-
-  useEffect(() => {
-    // #region debug-point A:action-state
-    fetch("http://127.0.0.1:7778/event", {
-      method: "POST",
-      body: JSON.stringify({
-        sessionId: "telegram-image-group-crash",
-        runId: "pre-fix",
-        hypothesisId: "A",
-        location: "telegram-campaign-form.tsx:state",
-        msg: "[DEBUG] action state changed",
-        data: {
-          status: state.status,
-          targetMode,
-          useImage,
-          selectedGroups: selectedGroupIds.length,
-          hasCampaignId: Boolean(state.campaignId),
-          messagePreview: state.message.slice(0, 120),
-        },
-        ts: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-  }, [selectedGroupIds.length, state.campaignId, state.message, state.status, targetMode, useImage]);
-
-  useEffect(() => {
     if (state.status !== "success") {
       return;
     }
-
-    // #region debug-point B:success-reset
-    fetch("http://127.0.0.1:7778/event", {
-      method: "POST",
-      body: JSON.stringify({
-        sessionId: "telegram-image-group-crash",
-        runId: "pre-fix",
-        hypothesisId: "B",
-        location: "telegram-campaign-form.tsx:success-effect",
-        msg: "[DEBUG] success effect before form reset",
-        data: {
-          targetMode,
-          useImage,
-          selectedGroups: selectedGroupIds.length,
-          fileInputMounted: Boolean(fileInputRef.current),
-          fileCount: fileInputRef.current?.files?.length || 0,
-        },
-        ts: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
 
     setIsConfirmOpen(false);
     setPreview(null);
