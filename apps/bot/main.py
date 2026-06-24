@@ -490,78 +490,80 @@ async def campaign_response_callback(update: Update, context: ContextTypes.DEFAU
     if not query:
         return
 
-    parts = (query.data or "").split(":")
-    if len(parts) != 3:
-        await notify_campaign_click(
-            query,
-            "Resposta invalida. Tente novamente mais tarde.",
-            show_alert=True,
-        )
-        return
-
-    _, recipient_id, option_key = parts
-    recipient = get_campaign_recipient(recipient_id)
-
-    if not recipient:
-        await notify_campaign_click(
-            query,
-            "Essa campanha nao foi encontrada ou ja expirou.",
-            show_alert=True,
-        )
-        return
-
-    effective_chat = update.effective_chat.id if update.effective_chat else None
-    stored_chat = recipient.get("telegram_chat_id")
-    if stored_chat and effective_chat and int(stored_chat) != int(effective_chat):
-        await notify_campaign_click(
-            query,
-            "Esse botao nao pertence a esta conversa.",
-            show_alert=True,
-        )
-        return
-
-    if recipient.get("status_resposta") == "respondido":
-        resposta = recipient.get("resposta") or "Resposta ja registrada"
-        await notify_campaign_click(
-            query,
-            f"Voce ja respondeu anteriormente: {resposta}.",
-            remove_markup=True,
-            show_alert=True,
-        )
-        return
-
-    campaign = get_campaign_buttons(recipient["campaign_id"])
-    if not campaign:
-        await notify_campaign_click(
-            query,
-            "Campanha nao encontrada. Tente novamente mais tarde.",
-            show_alert=True,
-        )
-        return
-
-    buttons = normalize_campaign_buttons(campaign)
-
     try:
-        option_index = int(option_key) - 1
-    except ValueError:
-        await notify_campaign_click(
-            query,
-            "Opcao invalida. Tente novamente mais tarde.",
-            show_alert=True,
-        )
-        return
+        await query.answer()
 
-    if option_index < 0 or option_index >= len(buttons):
-        await notify_campaign_click(
-            query,
-            "Opcao invalida. Tente novamente mais tarde.",
-            show_alert=True,
-        )
-        return
+        parts = (query.data or "").split(":")
+        if len(parts) != 3:
+            await notify_campaign_click(
+                query,
+                "Resposta invalida. Tente novamente mais tarde.",
+                show_alert=True,
+            )
+            return
 
-    resposta = buttons[option_index]
+        _, recipient_id, option_key = parts
+        recipient = get_campaign_recipient(recipient_id)
 
-    try:
+        if not recipient:
+            await notify_campaign_click(
+                query,
+                "Essa campanha nao foi encontrada ou ja expirou.",
+                show_alert=True,
+            )
+            return
+
+        effective_chat = update.effective_chat.id if update.effective_chat else None
+        stored_chat = recipient.get("telegram_chat_id")
+        if stored_chat and effective_chat and int(stored_chat) != int(effective_chat):
+            await notify_campaign_click(
+                query,
+                "Esse botao nao pertence a esta conversa.",
+                show_alert=True,
+            )
+            return
+
+        if recipient.get("status_resposta") == "respondido":
+            resposta = recipient.get("resposta") or "Resposta ja registrada"
+            await notify_campaign_click(
+                query,
+                f"Voce ja respondeu anteriormente: {resposta}.",
+                remove_markup=True,
+                show_alert=True,
+            )
+            return
+
+        campaign = get_campaign_buttons(recipient["campaign_id"])
+        if not campaign:
+            await notify_campaign_click(
+                query,
+                "Campanha nao encontrada. Tente novamente mais tarde.",
+                show_alert=True,
+            )
+            return
+
+        buttons = normalize_campaign_buttons(campaign)
+
+        try:
+            option_index = int(option_key) - 1
+        except ValueError:
+            await notify_campaign_click(
+                query,
+                "Opcao invalida. Tente novamente mais tarde.",
+                show_alert=True,
+            )
+            return
+
+        if option_index < 0 or option_index >= len(buttons):
+            await notify_campaign_click(
+                query,
+                "Opcao invalida. Tente novamente mais tarde.",
+                show_alert=True,
+            )
+            return
+
+        resposta = buttons[option_index]
+
         supabase.table("telegram_campaign_recipients").update(
             {
                 "status_resposta": "respondido",
@@ -570,12 +572,15 @@ async def campaign_response_callback(update: Update, context: ContextTypes.DEFAU
             }
         ).eq("id", recipient_id).execute()
     except Exception:
-        logger.exception("Nao foi possivel registrar a resposta da campanha")
-        await notify_campaign_click(
-            query,
-            "Nao foi possivel registrar sua resposta agora. Tente novamente em instantes.",
-            show_alert=True,
-        )
+        logger.exception("Falha ao processar clique da campanha")
+        try:
+            await notify_campaign_click(
+                query,
+                "Nao foi possivel registrar sua resposta agora. Tente novamente em instantes.",
+                show_alert=True,
+            )
+        except Exception:
+            logger.exception("Falha ao responder erro de clique da campanha")
         return
 
     await notify_campaign_click(
