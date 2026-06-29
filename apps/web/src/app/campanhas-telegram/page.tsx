@@ -75,6 +75,14 @@ function formatDateTime(value: string | null) {
   }).format(new Date(value));
 }
 
+function normalizeSearchValue(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
 function summarizeMessage(value: string, limit = 120) {
   const normalized = value.replace(/\s+/g, " ").trim();
 
@@ -128,6 +136,17 @@ function getResponseStatusMeta(status: TelegramCampaignRecipient["status_respost
   }
 
   return { label: "Aguardando", className: "day-chip day-chip-info" };
+}
+
+function buildCampaignSearchText(campaign: TelegramCampaign) {
+  return normalizeSearchValue(
+    [
+      campaign.nome_campanha,
+      getModeLabel(campaign.modo_disparo),
+      formatDateTime(campaign.created_at),
+      new Date(campaign.created_at).toISOString().slice(0, 10),
+    ].join(" "),
+  );
 }
 
 async function getCampaigns(tenantId: string) {
@@ -203,12 +222,17 @@ export default async function TelegramCampaignsPage({
 }) {
   const resolvedParams = (await searchParams) || {};
   const selectedCampaignId = firstParam(resolvedParams.campaign);
+  const campaignSearch = firstParam(resolvedParams.campaign_search);
   const currentUser = await requireTelegramCampaignAccess();
   const tenantId = currentUser.current_tenant.id;
   const campaigns = await getCampaigns(tenantId);
+  const normalizedCampaignSearch = normalizeSearchValue(campaignSearch);
+  const filteredCampaigns = normalizedCampaignSearch
+    ? campaigns.filter((campaign) => buildCampaignSearchText(campaign).includes(normalizedCampaignSearch))
+    : campaigns;
   const recipientOptions = await getCampaignRecipientOptions(tenantId);
   const selectedCampaign =
-    campaigns.find((item) => item.id === selectedCampaignId) || campaigns[0] || null;
+    filteredCampaigns.find((item) => item.id === selectedCampaignId) || filteredCampaigns[0] || null;
   const recipients = selectedCampaign
     ? await getCampaignRecipients(tenantId, selectedCampaign.id)
     : [];
@@ -243,29 +267,51 @@ export default async function TelegramCampaignsPage({
         <div className="panel-header">
           <div>
             <h2>Campanhas recentes</h2>
-            <p>Abra qualquer campanha para acompanhar envio, sem chat e respostas recebidas.</p>
+            <p>Busque por nome ou data e abra a campanha em uma lista suspensa, sem poluir a tela.</p>
           </div>
         </div>
 
         {campaigns.length > 0 ? (
-          <div className="module-grid">
-            {campaigns.map((campaign) => (
-              <Link
-                key={campaign.id}
-                href={`/campanhas-telegram?campaign=${campaign.id}`}
-                className={
-                  campaign.id === selectedCampaign?.id ? "module-card module-card-active" : "module-card"
-                }
+          <div className="campaign-browser-card">
+            <form method="get" className="campaign-browser-form">
+              <input
+                className="text-input courier-search-input"
+                type="search"
+                name="campaign_search"
+                defaultValue={campaignSearch}
+                placeholder="Buscar campanha por nome, modo ou data"
+              />
+              <select
+                className="text-input"
+                name="campaign"
+                defaultValue={selectedCampaign?.id || filteredCampaigns[0]?.id || ""}
               >
-                <strong>{campaign.nome_campanha}</strong>
-                <p>{formatDateTime(campaign.created_at)}</p>
-                <p>Modo: {getModeLabel(campaign.modo_disparo)}</p>
-                <p>
-                  Total: {campaign.total_planilha} | Enviados: {campaign.total_enviado} | Sem chat:{" "}
-                  {campaign.total_sem_chat_id}
-                </p>
-              </Link>
-            ))}
+                {filteredCampaigns.map((campaign) => (
+                  <option key={campaign.id} value={campaign.id}>
+                    {campaign.nome_campanha} | {formatDateTime(campaign.created_at)} | {getModeLabel(campaign.modo_disparo)}
+                  </option>
+                ))}
+              </select>
+              <button type="submit" className="secondary-button">
+                Abrir campanha
+              </button>
+            </form>
+
+            {filteredCampaigns.length > 0 ? (
+              <div className="campaign-browser-summary">
+                <strong>{filteredCampaigns.length} campanha(s) encontrada(s)</strong>
+                <span>
+                  {selectedCampaign
+                    ? `Aberta agora: ${selectedCampaign.nome_campanha}`
+                    : "Escolha uma campanha para ver os detalhes."}
+                </span>
+              </div>
+            ) : (
+              <div className="empty-state">
+                <h2>Nenhuma campanha encontrada</h2>
+                <p>Ajuste a busca por nome, modo ou data para localizar a campanha.</p>
+              </div>
+            )}
           </div>
         ) : (
           <div className="empty-state">
