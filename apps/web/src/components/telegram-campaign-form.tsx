@@ -154,6 +154,12 @@ export function TelegramCampaignForm({
     [baseRecipients, selectedIds],
   );
   const selectedRecipient = selectedRecipients[0] || null;
+  const selectedRecipientsWithChat = useMemo(
+    () => selectedRecipients.filter((recipient) => Boolean(recipient.telegram_chat_id)),
+    [selectedRecipients],
+  );
+  const allFilteredSelected =
+    filteredRecipients.length > 0 && filteredRecipients.every((recipient) => selectedIds.includes(recipient.id));
   const confirmationDetails = useMemo(() => {
     if (targetMode === "planilha" && preview) {
       return {
@@ -171,14 +177,23 @@ export function TelegramCampaignForm({
     if (targetMode === "individual") {
       return {
         eyebrow: "Confirmar campanha",
-        title: "Disparar para destinatario individual",
-        description: selectedRecipient
-          ? `${selectedRecipient.nome} recebera esta campanha no Telegram.`
-          : "Revise o destinatario selecionado antes de disparar.",
+        title:
+          selectedRecipients.length > 1
+            ? "Disparar para destinatarios individuais"
+            : "Disparar para destinatario individual",
+        description:
+          selectedRecipients.length > 1
+            ? `${selectedRecipients.length} pessoas selecionadas vao receber esta campanha individualmente no Telegram.`
+            : selectedRecipient
+              ? `${selectedRecipient.nome} recebera esta campanha no Telegram.`
+              : "Revise os destinatarios selecionados antes de disparar.",
         items: [
-          { label: "Destino", value: selectedRecipient?.nome || "Nao selecionado" },
-          { label: "CPF", value: selectedRecipient?.cpf || "-" },
-          { label: "Hotzone", value: selectedRecipient?.hotzone || "-" },
+          { label: "Selecionados", value: String(selectedRecipients.length) },
+          { label: "Com chat_id", value: String(selectedRecipientsWithChat.length) },
+          {
+            label: "Sem chat_id",
+            value: String(selectedRecipients.length - selectedRecipientsWithChat.length),
+          },
         ],
       };
     }
@@ -193,7 +208,7 @@ export function TelegramCampaignForm({
         { label: "Botoes", value: "Nao se aplica" },
       ],
     };
-  }, [preview, selectedGroupIds.length, selectedRecipient, targetMode, useImage]);
+  }, [preview, selectedGroupIds.length, selectedRecipient, selectedRecipients.length, selectedRecipientsWithChat.length, targetMode, useImage]);
 
   useEffect(() => {
     if (state.status !== "success") {
@@ -275,12 +290,22 @@ export function TelegramCampaignForm({
 
   function toggleRecipient(recipientId: string) {
     setSelectedIds((currentIds) => {
-      return currentIds[0] === recipientId ? [] : [recipientId];
+      return currentIds.includes(recipientId)
+        ? currentIds.filter((currentId) => currentId !== recipientId)
+        : [...currentIds, recipientId];
     });
   }
 
   function clearSelection() {
     setSelectedIds([]);
+  }
+
+  function selectAllFilteredRecipients() {
+    setSelectedIds(
+      filteredRecipients
+        .map((recipient) => recipient.id)
+        .filter((recipientId, index, currentIds) => currentIds.indexOf(recipientId) === index),
+    );
   }
 
   function toggleGroup(groupId: string) {
@@ -599,13 +624,13 @@ export function TelegramCampaignForm({
           <div className="campaign-card-header">
             <div>
               <span className="campaign-section-eyebrow">Destinatario</span>
-              <h3>Escolha uma pessoa</h3>
-              <p className="campaign-card-copy">Busque por nome, CPF, telefone, hotzone ou turno.</p>
+                <h3>Escolha uma ou mais pessoas</h3>
+                <p className="campaign-card-copy">Busque por nome, CPF, telefone, hotzone ou turno e dispare individualmente para todos os selecionados.</p>
             </div>
             <div className="campaign-selection-actions">
               <div className="campaign-selection-summary">
-                <strong>{selectedRecipient ? "1" : "0"}</strong>
-                <span>selecionado</span>
+                  <strong>{selectedRecipients.length}</strong>
+                  <span>{selectedRecipients.length === 1 ? "selecionado" : "selecionados"}</span>
               </div>
             </div>
           </div>
@@ -626,18 +651,29 @@ export function TelegramCampaignForm({
               />
               <span>Somente com chat_id</span>
             </label>
-            {selectedRecipient ? (
+            {filteredRecipients.length > 0 ? (
+              <button type="button" className="secondary-button" onClick={selectAllFilteredRecipients}>
+                {allFilteredSelected ? "Todos exibidos selecionados" : "Selecionar todos"}
+              </button>
+            ) : null}
+            {selectedRecipients.length > 0 ? (
               <button type="button" className="secondary-button" onClick={clearSelection}>
                 Limpar
               </button>
             ) : null}
           </div>
 
-          {selectedRecipient ? (
+          {selectedRecipients.length > 0 ? (
             <div className="campaign-recipient-selected">
-              <strong>{selectedRecipient.nome}</strong>
+              <strong>
+                {selectedRecipients.length === 1
+                  ? selectedRecipient?.nome || "1 destinatario selecionado"
+                  : `${selectedRecipients.length} destinatarios selecionados`}
+              </strong>
               <span>
-                {selectedRecipient.cpf} | {selectedRecipient.hotzone || "-"} | {selectedRecipient.turno || "-"}
+                {selectedRecipients.length === 1
+                  ? `${selectedRecipient?.cpf || "-"} | ${selectedRecipient?.hotzone || "-"} | ${selectedRecipient?.turno || "-"}`
+                  : `${selectedRecipientsWithChat.length} com chat_id e ${selectedRecipients.length - selectedRecipientsWithChat.length} sem chat_id`}
               </span>
             </div>
           ) : null}
@@ -743,7 +779,7 @@ export function TelegramCampaignForm({
             targetMode === "planilha"
               ? !preview
               : targetMode === "individual"
-                ? !selectedRecipient
+                ? selectedRecipients.length === 0
                 : selectedGroupIds.length === 0
           }
         />

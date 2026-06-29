@@ -473,7 +473,10 @@ async def notify_campaign_click(
     remove_markup: bool = False,
     show_alert: bool = False,
 ) -> None:
-    await query.answer(message, show_alert=show_alert)
+    try:
+        await query.answer(message, show_alert=show_alert)
+    except Exception:
+        logger.exception("Nao foi possivel responder o callback do botao")
 
     if remove_markup:
         try:
@@ -491,8 +494,6 @@ async def campaign_response_callback(update: Update, context: ContextTypes.DEFAU
         return
 
     try:
-        await query.answer()
-
         parts = (query.data or "").split(":")
         if len(parts) != 3:
             await notify_campaign_click(

@@ -238,18 +238,10 @@ async function resolveCampaignRecipients(params: {
     throw new Error("Selecione pelo menos uma pessoa da base para disparar a campanha.");
   }
 
-  if (params.mode === "individual" && selectedIds.length !== 1) {
-    throw new Error("No modo individual, selecione somente uma pessoa.");
-  }
-
   const recipients = await getWaitlistRecipientsByIds(params.tenantId, selectedIds);
 
   if (recipients.length === 0) {
     throw new Error("Nenhum destinatario valido foi encontrado na selecao manual.");
-  }
-
-  if (params.mode === "individual" && recipients.length !== 1) {
-    throw new Error("Nao foi possivel confirmar o destinatario individual selecionado.");
   }
 
   return recipients;
